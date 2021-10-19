@@ -1,0 +1,6 @@
+/cache
+__pycache__
+/rust_crawl/target
+/rust_crawl/cache
+/rust_crawl/target.lock
+/Pipfile.lock
