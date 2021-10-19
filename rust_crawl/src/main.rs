@@ -2,7 +2,11 @@ use anyhow::Result;
 use crossbeam::{channel, thread};
 use dashmap::{DashMap, DashSet};
 use parking_lot::Mutex;
-use std::{path::{Path, PathBuf}, sync::{atomic::AtomicBool, Arc}, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
 // use parking_lot::Mutex;
 use rayon::prelude::*;
 use regex::Regex;
@@ -10,7 +14,6 @@ use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize, __private::doc};
 use static_init::dynamic;
 use std::collections::BinaryHeap;
-
 
 #[dynamic]
 static WEB_RE: Regex = Regex::new(r#"https?://([^/]*)/?.*"#).unwrap();
@@ -121,7 +124,6 @@ impl Crawler {
 
     fn process_url(&self, url: &str) {
         if let Ok(data) = Self::get_doc_data(&url) {
-
             if !self.is_dutch_doc(&data) {
                 return;
             }
@@ -170,11 +172,12 @@ impl Crawler {
         }
     }
 
-    fn save(&self) -> Result<()> {
+    fn save(&self, save_file: impl AsRef<Path>) -> Result<()> {
         let serialized = serde_json::ser::to_string(self)?;
+        let save_file = save_file.as_ref();
 
         if SAVE_FILE.exists() {
-            let mut bup_file = SAVE_FILE.as_os_str().to_owned();
+            let mut bup_file = save_file.as_os_str().to_owned();
             bup_file.push(".old");
             std::fs::copy(&*SAVE_FILE, bup_file)?;
         }
@@ -195,12 +198,13 @@ impl Crawler {
                 scope.spawn(move |_| self.worker(recv_clone));
             }
 
-
             loop {
                 std::thread::sleep(Duration::from_secs(10));
 
-                if let Err(_) = self.save() {
-                    eprintln!("FAILED SAVING");
+                if let Some(p) = &self.save_file {
+                    if let Err(_) = self.save(p) {
+                        eprintln!("FAILED SAVING");
+                    }
                 }
 
                 self.que.lock().sort_by_key(|url| {
@@ -209,7 +213,7 @@ impl Crawler {
                             let count = self.domain_counts.get(host).map(|n| *n);
                             return count.unwrap_or(usize::max_value());
                         }
-                    } 
+                    }
                     return usize::max_value();
                 });
 
@@ -227,7 +231,7 @@ impl Crawler {
 }
 
 fn main() {
-    let crawler = Crawler::new(["https://www.wikipedia.nl/".to_string()], None);
+    let crawler = Crawler::new(["https://www.wikipedia.nl/".to_string()], SAVE_FILE.clone());
     crawler.run(100)
 }
 
