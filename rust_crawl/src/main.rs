@@ -154,16 +154,17 @@ impl Crawler {
                         return None
                     }
                     let url_parsed = url::Url::parse(url).ok()?;
-                    Some(format!(
-                        "{}://{}{}",
-                        url_parsed.scheme(),
-                        url_parsed.host_str()?,
-                        if link.starts_with("/") {
-                            link
-                        } else {
-                            format!("/{}", link)
-                        }
-                    ))
+                    Some(url_parsed.join(&link).ok()?.to_string())
+                    // Some(format!(
+                    //     "{}://{}{}",
+                    //     url_parsed.scheme(),
+                    //     url_parsed.host_str()?,
+                    //     if link.starts_with("/") {
+                    //         link
+                    //     } else {
+                    //         format!("/{}", link)
+                    //     }
+                    // ))
                 }
             })
             .filter(|u| url::Url::parse(u).is_ok())
@@ -326,6 +327,8 @@ fn main() {
 
 #[test]
 fn test_url() {
-    let a = url::Url::parse("help/Python.html");
-    eprintln!("{:?}",a);
+    let a = url::Url::parse("https://help.com/Python.html").unwrap();
+    let a = a.join("/oi").unwrap();
+    eprintln!("{:#?}",a);
+    eprintln!("{}", a);
 }
