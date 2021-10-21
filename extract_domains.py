@@ -29,7 +29,11 @@ def extract_unique_domains(urls: list[str]) -> set[str]:
         parsed = urlparse(url)
         domains.add(f"{parsed.scheme}://{parsed.netloc}")
     
-    domains.remove("://")
+    try:
+        domains.remove("://")
+    except KeyError:
+        pass
+    
     return domains
 
 def main(args: Args):

@@ -147,24 +147,19 @@ impl Crawler {
             .filter_map(|n| n.attr("href"))
             .map(ToOwned::to_owned)
             .filter_map(|link| {
-                if link.starts_with("http") {
-                    Some(link)
-                } else {
-                    if let Ok(_) = url::Url::parse(&link) {
-                        return None
+                match url::Url::parse(&link) {
+                    Ok(parsed) => {
+                        if parsed.scheme().starts_with("http") {
+                            Some(link)
+                        } else {
+                            None
+                        }
+                    },
+                    Err(url::ParseError::RelativeUrlWithoutBase) => {
+                        let url_parsed = url::Url::parse(url).ok()?;
+                        Some(url_parsed.join(&link).ok()?.to_string())
                     }
-                    let url_parsed = url::Url::parse(url).ok()?;
-                    Some(url_parsed.join(&link).ok()?.to_string())
-                    // Some(format!(
-                    //     "{}://{}{}",
-                    //     url_parsed.scheme(),
-                    //     url_parsed.host_str()?,
-                    //     if link.starts_with("/") {
-                    //         link
-                    //     } else {
-                    //         format!("/{}", link)
-                    //     }
-                    // ))
+                    Err(_) => None
                 }
             })
             .filter(|u| url::Url::parse(u).is_ok())
