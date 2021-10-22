@@ -35,23 +35,29 @@ static DUTCH_URL: Regex = Regex::new(r#".*\Wnl\W.*"#).unwrap();
 static RESULTS_FILE: PathBuf = Path::new("cache/results.txt").to_owned();
 
 /// Priority queue optimized for many items with the same priority
+/// Consits of a BTreeMap (which acts as a regular priority que)
+/// with the priority as a key, and values with that priority in a
+/// list associated to that key
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct UrlPrioQue {
     que: BTreeMap<usize, Vec<String>>,
 }
 
 impl UrlPrioQue {
+
     fn new() -> Self {
         Self::default()
     }
 
-    fn insert(&mut self, k: usize, v: String) {
+    /// Insert a key (domain visit count) and associated url as string into the que
+    fn insert(&mut self, domain_count: usize, url: String) {
         self.que
-            .entry(k)
+            .entry(domain_count)
             .or_insert_with(|| Default::default())
-            .push(v);
+            .push(url);
     }
 
+    /// Get the top element from the que, this will be a url with the minimal domain count
     fn pop(&mut self) -> Option<String> {
         let first_entry = self.que.first_entry();
         if let Some(mut e) = first_entry {
@@ -65,12 +71,14 @@ impl UrlPrioQue {
         None
     }
 
+    /// Put multiple elements in the que
     fn extend(&mut self, items: impl IntoIterator<Item = (usize, String)>) {
         for (c, u) in items {
             self.insert(c, u);
         }
     }
 
+    /// Shuffle the elements of the vectors associated to the domain counts.
     fn shuffle_inner(&mut self) {
         self.que
             .iter_mut()
@@ -79,6 +87,7 @@ impl UrlPrioQue {
 }
 
 impl FromIterator<(usize, String)> for UrlPrioQue {
+
     fn from_iter<T: IntoIterator<Item = (usize, String)>>(iter: T) -> Self {
         let mut s = Self::default();
         for (c, u) in iter {
@@ -86,6 +95,7 @@ impl FromIterator<(usize, String)> for UrlPrioQue {
         }
         s
     }
+
 }
 
 #[test]
@@ -105,6 +115,8 @@ fn test_url_prioque() {
     assert_eq!(q.pop(), Some("7".into()));
 }
 
+
+/// Extracted information from an html page
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DocData {
     text: String,
@@ -113,10 +125,17 @@ struct DocData {
     links: HashSet<String>,
 }
 
+/// Command type to control workers with
 enum WorkerCmd {
     Stop,
 }
 
+
+/// State of the crawler
+/// - `que`: que from which workers draw websites
+/// - `being processed`: websites currently being processed by workers
+/// - `dutch_webpages`: websites encountered that are considered dutch
+/// - `domain_counts`: amount of times a domain has been visited
 #[derive(Debug, Serialize, Deserialize)]
 struct CrawlerState {
     que: Mutex<UrlPrioQue>,
