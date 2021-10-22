@@ -206,7 +206,7 @@ impl Crawler {
 
         hyper::Uri::from_str(url)?;
 
-        #[cfg(not(feature="async_requests"))]
+        #[cfg(feature="blocking_requests")]
         let txt: Result<String> = {
             let url_cl = url.to_owned();
             tokio::task::spawn_blocking(move || {
@@ -219,14 +219,13 @@ impl Crawler {
             .await?
         };
 
-        #[cfg(feature="async_requests")]
+        #[cfg(not(feature="blocking_requests"))]
         let txt: Result<String> = {
             let client = reqwest::Client::builder()
                     .timeout(Duration::from_secs(30))
                     .build()?;
             Ok(client.get(url).send().await?.text().await?)
         };
-
 
         txt
     }

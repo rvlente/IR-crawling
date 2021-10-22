@@ -1,6 +1,6 @@
 [features]
 default = []
-async_requests = []
+blocking_requests = []
 
 [package]
 edition = "2018"
