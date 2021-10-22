@@ -373,13 +373,21 @@ impl Crawler {
 
                 let (ip_sndr, ip_rcvr) = channel::unbounded();
                 scope.spawn(Self::send_back_public_ip(ip_sndr));
-                let cur_ip = ip_rcvr.recv_timeout(Duration::from_secs(5));
+                let mut same_ip = false;
 
-                let same_ip = if let Ok(Some(ip)) = cur_ip {
-                    ip == start_ip
-                } else {
-                    false
-                };
+                for _ in 0.. 5 {
+                    let cur_ip = ip_rcvr.recv_timeout(Duration::from_secs(5));
+
+                    same_ip = if let Ok(Some(ip)) = dbg!(cur_ip) {
+                        ip == start_ip
+                    } else {
+                        false
+                    };
+
+                    if same_ip {
+                        break
+                    }
+                }
 
                 if self.being_processed.is_empty() || !same_ip {
                     eprintln!("STOPPING CRAWLER");
