@@ -11,6 +11,8 @@ pyicu = "*"
 pycld2 = "*"
 beautifulsoup4 = "*"
 joblib = "*"
+orjson = "*"
+tqdm = "*"
 
 [dev-packages]
 
