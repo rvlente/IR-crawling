@@ -1,3 +1,7 @@
+[features]
+default = []
+async_requests = []
+
 [package]
 edition = "2018"
 name = "rust_crawl"

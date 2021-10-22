@@ -4,7 +4,16 @@ use anyhow::Result;
 use crossbeam::{channel, thread};
 use dashmap::{DashMap, DashSet};
 use parking_lot::Mutex;
-use std::{collections::{BTreeMap, BTreeSet, HashSet}, convert::TryFrom, iter::FromIterator, net::IpAddr, path::{Path, PathBuf}, str::FromStr, sync::{atomic::AtomicBool, Arc}, time::{Duration, Instant}};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    convert::TryFrom,
+    iter::FromIterator,
+    net::IpAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::{atomic::AtomicBool, Arc},
+    time::{Duration, Instant},
+};
 // use parking_lot::Mutex;
 use rand::prelude::*;
 use rayon::prelude::*;
@@ -128,13 +137,41 @@ enum WorkerCmd {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Crawler {
+struct CrawlerState {
     que: Mutex<UrlPrioQue>,
     history: DashSet<String>,
     being_processed: DashSet<String>,
     dutch_webpages: Mutex<Vec<String>>,
     domain_counts: DashMap<String, usize>,
+}
+
+impl CrawlerState {
+    pub fn new(start_urls: impl IntoIterator<Item = String>) -> Self {
+        Self {
+            que: Mutex::new(start_urls.into_iter().map(|u| (0, u)).collect()),
+            history: DashSet::new(),
+            being_processed: DashSet::new(),
+            dutch_webpages: Default::default(),
+            domain_counts: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+struct CrawlerConfig {
     save_file: Option<PathBuf>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Crawler {
+    state: CrawlerState,
+    cfg: CrawlerConfig,
+}
+
+impl From<(CrawlerState, CrawlerConfig)> for Crawler {
+    fn from((state, cfg): (CrawlerState, CrawlerConfig)) -> Self {
+        Self { state, cfg }
+    }
 }
 
 impl Crawler {
@@ -143,12 +180,10 @@ impl Crawler {
         save_file: impl Into<Option<PathBuf>>,
     ) -> Self {
         Self {
-            que: Mutex::new(start_urls.into_iter().map(|u| (0, u)).collect()),
-            history: DashSet::new(),
-            being_processed: DashSet::new(),
-            dutch_webpages: Default::default(),
-            save_file: save_file.into(),
-            domain_counts: Default::default(),
+            state: CrawlerState::new(start_urls),
+            cfg: CrawlerConfig {
+                save_file: save_file.into(),
+            },
         }
     }
 
@@ -176,7 +211,7 @@ impl Crawler {
         url::Url::parse(&url)
             .ok()
             .and_then(|u| u.host_str().map(ToOwned::to_owned))
-            .map(|host| self.domain_counts.get(&host).map(|c| *c).unwrap_or(0))
+            .map(|host| self.state.domain_counts.get(&host).map(|c| *c).unwrap_or(0))
             .unwrap_or(usize::max_value())
     }
 
@@ -186,21 +221,33 @@ impl Crawler {
     }
 
     async fn make_request(url: &str) -> Result<String> {
-
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()?;
-
         // Necessary to prevent reqwest from panicking
+
         hyper::Uri::from_str(url)?;
 
-        let url_cl = url.to_owned();
-        let resp = tokio::task::spawn_blocking(move || client.get(&url_cl).send()).await??;
-        let txt = resp.text()?;
+        #[cfg(not(feature="async_requests"))]
+        let txt: Result<String> = {
+            let url_cl = url.to_owned();
+            tokio::task::spawn_blocking(move || {
+                let client = reqwest::blocking::Client::builder()
+                    .timeout(Duration::from_secs(30))
+                    .build()?;
+                let txt = client.get(&url_cl).send()?.text()?;
+                Ok(txt)
+            })
+            .await?
+        };
 
-        // let resp = reqwest::get(url).await?;
-        // let txt = resp.text().await?;
-        Ok(txt)
+        #[cfg(feature="async_requests")]
+        let txt: Result<String> = {
+            let client = reqwest::Client::builder()
+                    .timeout(Duration::from_secs(30))
+                    .build()?;
+            Ok(client.get(url).send().await?.text().await?)
+        };
+
+
+        txt
     }
 
     async fn get_doc_data(url: &str) -> Result<DocData> {
@@ -247,7 +294,7 @@ impl Crawler {
     fn increment_host_count(&self, url: &str) {
         if let Ok(url_parsed) = url::Url::parse(url) {
             if let Some(host) = url_parsed.host_str() {
-                *self.domain_counts.entry(host.to_owned()).or_insert(0) += 1;
+                *self.state.domain_counts.entry(host.to_owned()).or_insert(0) += 1;
             }
         }
     }
@@ -260,18 +307,18 @@ impl Crawler {
 
             println!("{}", data.url);
 
-            self.dutch_webpages.lock().push(data.url);
+            self.state.dutch_webpages.lock().push(data.url);
 
             let filtered_urls: Vec<String> = data
                 .links
                 .iter()
                 // .map(|link| link.split('?').next().unwrap())
-                .filter(|&link| !self.history.contains(link))
+                .filter(|&link| !self.state.history.contains(link))
                 .map(ToOwned::to_owned)
                 .collect();
 
             for url in filtered_urls.iter().cloned() {
-                self.history.insert(url);
+                self.state.history.insert(url);
             }
 
             let extension: Vec<_> = filtered_urls
@@ -283,7 +330,7 @@ impl Crawler {
                 })
                 .collect();
 
-            self.que.lock().extend(extension);
+            self.state.que.lock().extend(extension);
         }
     }
 
@@ -293,12 +340,12 @@ impl Crawler {
                 break;
             }
             if let Some(hurl) = {
-                let r = self.que.lock().pop();
+                let r = self.state.que.lock().pop();
                 r
             } {
-                self.being_processed.insert(hurl.clone());
+                self.state.being_processed.insert(hurl.clone());
                 self.process_url(&hurl).await;
-                self.being_processed.remove(&hurl);
+                self.state.being_processed.remove(&hurl);
             } else {
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
@@ -315,7 +362,7 @@ impl Crawler {
             std::fs::copy(&*save_file, bup_file)?;
         }
 
-        let results = self.dutch_webpages.lock().join("\n");
+        let results = self.state.dutch_webpages.lock().join("\n");
 
         std::fs::write(&*save_file, serialized)?;
         std::fs::write(&*RESULTS_FILE, results)?;
@@ -323,7 +370,7 @@ impl Crawler {
     }
 
     fn save_if_save_file(&self) -> Result<()> {
-        if let Some(p) = &self.save_file {
+        if let Some(p) = &self.cfg.save_file {
             self.save(p)?;
         }
         Ok(())
@@ -360,7 +407,7 @@ impl Crawler {
 
                 if lc % 5 == 0 {
                     save();
-                    self.que.lock().shuffle_inner()
+                    self.state.que.lock().shuffle_inner()
                 }
 
                 if lc % 5 == 0 {}
@@ -375,7 +422,7 @@ impl Crawler {
                     false
                 };
 
-                if self.being_processed.is_empty() || !same_ip {
+                if self.state.being_processed.is_empty() || !same_ip {
                     eprintln!("STOPPING CRAWLER");
                     for _ in 0..n_workers {
                         sender.send(WorkerCmd::Stop).unwrap();
@@ -384,7 +431,10 @@ impl Crawler {
                     break;
                 }
 
-                eprintln!("Dutch sites found: {}", self.dutch_webpages.lock().len());
+                eprintln!(
+                    "Dutch sites found: {}",
+                    self.state.dutch_webpages.lock().len()
+                );
             }
         });
     }
@@ -396,29 +446,25 @@ struct Opt {
     save_file: Option<PathBuf>,
     #[structopt(long, help = "amount of simultaneous workers", default_value = "128")]
     num_workers: usize,
+    // #[structopt(short, long, help = "Crawler configuration file")]
+    // cfg_file: Option<PathBuf>,
 }
 
 fn main() {
     let opt = Opt::from_args();
 
-    let crawler = opt
+    let crawler_state: CrawlerState = opt
         .save_file
         .clone()
         .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|state| {
-            let mut result = serde_json::de::from_str(&state).ok();
-            result = result.map(|mut c: Crawler| {
-                c.save_file = opt.save_file.clone().into();
-                c
-            });
-            result
-        })
-        .unwrap_or_else(|| {
-            Crawler::new(
-                ["https://www.wikipedia.nl/".to_string()],
-                opt.save_file.clone(),
-            )
-        });
+        .and_then(|state_str| serde_json::de::from_str(&state_str).ok())
+        .unwrap_or_else(|| CrawlerState::new(["https://www.wikipedia.nl/".to_string()]));
+
+    let crawler_cfg = CrawlerConfig {
+        save_file: opt.save_file.clone(),
+    };
+
+    let crawler = Crawler::from((crawler_state, crawler_cfg));
 
     let runtime = Builder::new_multi_thread()
         .max_blocking_threads(opt.num_workers)
@@ -427,7 +473,7 @@ fn main() {
         .unwrap();
 
     // let crawler = Crawler::new(["https://www.wikipedia.nl/".to_string()], opt.save_file);
-    runtime.block_on(crawler.run(opt.num_workers))
+    runtime.block_on(crawler.run(opt.num_workers));
 }
 
 #[test]
