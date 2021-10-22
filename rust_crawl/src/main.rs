@@ -4,15 +4,7 @@ use anyhow::Result;
 use crossbeam::{channel, thread};
 use dashmap::{DashMap, DashSet};
 use parking_lot::Mutex;
-use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
-    convert::TryFrom,
-    iter::FromIterator,
-    net::IpAddr,
-    path::{Path, PathBuf},
-    sync::{atomic::AtomicBool, Arc},
-    time::{Duration, Instant},
-};
+use std::{collections::{BTreeMap, BTreeSet, HashSet}, convert::TryFrom, iter::FromIterator, net::IpAddr, path::{Path, PathBuf}, str::FromStr, sync::{atomic::AtomicBool, Arc}, time::{Duration, Instant}};
 // use parking_lot::Mutex;
 use rand::prelude::*;
 use rayon::prelude::*;
@@ -194,11 +186,13 @@ impl Crawler {
     }
 
     async fn make_request(url: &str) -> Result<String> {
+
         let client = reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()?;
 
-        // client.ge
+        // Necessary to prevent reqwest from panicking
+        hyper::Uri::from_str(url)?;
 
         let url_cl = url.to_owned();
         let resp = tokio::task::spawn_blocking(move || client.get(&url_cl).send()).await??;

@@ -10,6 +10,8 @@ anyhow = "1.0.44"
 async-scoped = {version = "0.7.0", features = ["use-tokio"]}
 crossbeam = "0.8.1"
 dashmap = {version = "4.0.2", features = ["serde"]}
+http = "0.2.5"
+hyper = "0.14.13"
 num_cpus = "1.13.0"
 parking_lot = {version = "0.11.2", features = ["serde"]}
 public-ip = "0.2.1"

@@ -1455,6 +1455,8 @@ dependencies = [
  "async-scoped",
  "crossbeam",
  "dashmap",
+ "http",
+ "hyper",
  "num_cpus",
  "parking_lot",
  "public-ip",
