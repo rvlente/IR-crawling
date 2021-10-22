@@ -11,7 +11,6 @@ use std::{
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
-    sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
 };
 // use parking_lot::Mutex;
@@ -112,24 +111,6 @@ struct DocData {
     url: String,
     langs: HashSet<String>,
     links: HashSet<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct HeapUrl {
-    url: String,
-    host_count: usize,
-}
-
-impl PartialOrd for HeapUrl {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(other.host_count.cmp(&self.host_count))
-    }
-}
-
-impl Ord for HeapUrl {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
-    }
 }
 
 enum WorkerCmd {
