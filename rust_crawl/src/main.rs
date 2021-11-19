@@ -1,29 +1,25 @@
 #![feature(map_first_last)]
 
 use anyhow::Result;
-use crossbeam::{channel, thread};
+use crossbeam::{channel};
 use dashmap::{DashMap, DashSet};
-use parking_lot::{lock_api::RawMutex, Mutex};
+use parking_lot::{ Mutex};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
-    convert::TryFrom,
-    fs::File,
-    io::{BufReader, BufWriter, Write},
+    collections::{BTreeMap, HashSet},
+    io::{ BufWriter, Write},
     iter::FromIterator,
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
     sync::{atomic::AtomicBool, Arc},
-    time::{Duration, Instant},
+    time::{Duration},
 };
 // use parking_lot::Mutex;
 use rand::prelude::*;
-use rayon::prelude::*;
 use regex::Regex;
 use select::{document::Document, predicate::Name};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use static_init::dynamic;
-use std::collections::BinaryHeap;
 use std::fmt::Debug;
 use structopt::StructOpt;
 use tokio::runtime::Builder;
@@ -61,7 +57,7 @@ impl UrlPrioQue {
     fn insert(&mut self, domain_count: usize, url: Arc<str>) {
         self.que
             .entry(domain_count)
-            .or_insert_with(|| Default::default())
+            .or_insert_with(Default::default)
             .push(url);
     }
 
@@ -290,7 +286,7 @@ impl CrawlerState {
 
     fn url_filter(url: impl AsRefStr) -> bool {
         let url = url.as_ref_str();
-        return !(url.contains("\t") || url.contains("\n"));
+        !(url.contains('\t') || url.contains('\n'))
     }
 
     fn domain_counts_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
@@ -299,24 +295,22 @@ impl CrawlerState {
             .iter()
             .map(|r| (r.key().clone(), *r.value()))
             .collect();
-        let result = items
+            items
             .into_iter()
             .filter(|(dom, _)| Self::url_filter(&**dom))
-            .flat_map(|(dom, c)| [c.to_string().into(), TAB.clone(), dom, NEW_LINE.clone()]);
-
-        result
+            .flat_map(|(dom, c)| [c.to_string().into(), TAB.clone(), dom, NEW_LINE.clone()])
     }
 
     fn drain_train_dataset_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
         let items: Vec<_> = self.train_dataset.lock().drain(..).collect();
-        let result = items.into_iter().flat_map(|ts| {
+        items.into_iter().flat_map(|ts| {
             [
                 serde_json::ser::to_string(&ts).unwrap().into(),
                 NEW_LINE.clone(),
             ]
-        });
+        })
 
-        result
+
     }
 
     fn que_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
@@ -327,16 +321,15 @@ impl CrawlerState {
                 .map(|(&c, urls)| (c, urls.clone()))
                 .collect()
         };
-        let result = items
+        items
             .into_iter()
             .flat_map(|(c, us)| us.into_iter().map(|s| (c, s)).collect::<Vec<_>>())
             .filter(|(_, u)| Self::url_filter(&**u))
             .flat_map(|(c, u)| {
                 // Some(format!("{}\t{}", c, u))
                 [c.to_string().into(), TAB.clone(), u, NEW_LINE.clone()]
-            });
+            })
 
-        result
     }
 
     fn urls_to_lines(s: impl IntoIterator<Item = Arc<str>>) -> impl Iterator<Item = Arc<str>> {
@@ -473,11 +466,11 @@ impl Crawler {
     }
 
     fn is_dutch_url(&self, url: &str) -> bool {
-        if let Some(m) = WEB_RE.captures_iter(&url).next() {
+        if let Some(m) = WEB_RE.captures_iter(url).next() {
             let base_url = m[0].to_owned();
             DUTCH_URL.is_match(&base_url)
         } else {
-            DUTCH_URL.is_match(&url)
+            DUTCH_URL.is_match(url)
         }
     }
 
@@ -493,7 +486,7 @@ impl Crawler {
     }
 
     fn get_host_count(&self, url: &str) -> usize {
-        url::Url::parse(&url)
+        url::Url::parse(url)
             .ok()
             .and_then(|u| u.host_str().map(Arc::from))
             .map(|host| self.state.domain_counts.get(&host).map(|c| *c).unwrap_or(0))
@@ -594,7 +587,7 @@ impl Crawler {
     }
 
     async fn process_url(&self, url: &str) {
-        if let Ok(data) = Self::get_doc_data(&url).await {
+        if let Ok(data) = Self::get_doc_data(url).await {
             if !self.is_dutch_doc(&data) {
                 if !data.langs.is_empty() {
                     self.maybe_save_doc_as_train_sample(&data, false);
