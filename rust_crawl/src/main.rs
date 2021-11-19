@@ -3,7 +3,7 @@
 use anyhow::Result;
 use crossbeam::{channel, thread};
 use dashmap::{DashMap, DashSet};
-use parking_lot::Mutex;
+use parking_lot::{lock_api::RawMutex, Mutex};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     convert::TryFrom,
@@ -38,10 +38,10 @@ static DUTCH_URL: Regex = Regex::new(r#".*\Wnl\W.*"#).unwrap();
 static RESULTS_FILE: PathBuf = Path::new("cache/results.txt").to_owned();
 
 #[dynamic]
-static NEW_LINE: Arc<String> = Arc::new("\n".into());
+static NEW_LINE: Arc<str> = "\n".to_string().into();
 
 #[dynamic]
-static TAB: Arc<String> = Arc::new("\t".into());
+static TAB: Arc<str> = "\t".to_string().into();
 
 /// Priority queue optimized for many items with the same priority
 /// Consits of a BTreeMap (which acts as a regular priority que)
@@ -49,7 +49,7 @@ static TAB: Arc<String> = Arc::new("\t".into());
 /// list associated to that key
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct UrlPrioQue {
-    que: BTreeMap<usize, Vec<Arc<String>>>,
+    que: BTreeMap<usize, Vec<Arc<str>>>,
 }
 
 impl UrlPrioQue {
@@ -58,7 +58,7 @@ impl UrlPrioQue {
     }
 
     /// Insert a key (domain visit count) and associated url as string into the que
-    fn insert(&mut self, domain_count: usize, url: Arc<String>) {
+    fn insert(&mut self, domain_count: usize, url: Arc<str>) {
         self.que
             .entry(domain_count)
             .or_insert_with(|| Default::default())
@@ -66,7 +66,7 @@ impl UrlPrioQue {
     }
 
     /// Get the top element from the que, this will be a url with the minimal domain count
-    fn pop(&mut self) -> Option<Arc<String>> {
+    fn pop(&mut self) -> Option<Arc<str>> {
         let first_entry = self.que.first_entry();
         if let Some(mut e) = first_entry {
             if let Some(url) = e.get_mut().pop() {
@@ -80,7 +80,7 @@ impl UrlPrioQue {
     }
 
     /// Put multiple elements in the que
-    fn extend(&mut self, items: impl IntoIterator<Item = (usize, Arc<String>)>) {
+    fn extend(&mut self, items: impl IntoIterator<Item = (usize, Arc<str>)>) {
         for (c, u) in items {
             self.insert(c, u);
         }
@@ -93,13 +93,13 @@ impl UrlPrioQue {
             .for_each(|(_, sites)| sites.shuffle(&mut rand::thread_rng()));
     }
 
-    fn inner(&self) -> &BTreeMap<usize, Vec<Arc<String>>> {
+    fn inner(&self) -> &BTreeMap<usize, Vec<Arc<str>>> {
         &self.que
     }
 }
 
-impl FromIterator<(usize, Arc<String>)> for UrlPrioQue {
-    fn from_iter<T: IntoIterator<Item = (usize, Arc<String>)>>(iter: T) -> Self {
+impl FromIterator<(usize, Arc<str>)> for UrlPrioQue {
+    fn from_iter<T: IntoIterator<Item = (usize, Arc<str>)>>(iter: T) -> Self {
         let mut s = Self::default();
         for (c, u) in iter {
             s.insert(c, u);
@@ -119,11 +119,11 @@ fn test_url_prioque() {
     };
 
     insert_vals(&mut q);
-    assert_eq!(q.pop(), Some(Arc::new("1".into())));
-    assert_eq!(q.pop(), Some(Arc::new("1".into())));
-    assert_eq!(q.pop(), Some(Arc::new("1".into())));
-    assert_eq!(q.pop(), Some(Arc::new("5".into())));
-    assert_eq!(q.pop(), Some(Arc::new("7".into())));
+    assert_eq!(q.pop(), Some("1".to_string().into()));
+    assert_eq!(q.pop(), Some("1".to_string().into()));
+    assert_eq!(q.pop(), Some("1".to_string().into()));
+    assert_eq!(q.pop(), Some("5".to_string().into()));
+    assert_eq!(q.pop(), Some("7".to_string().into()));
 
     insert_vals(&mut q);
 
@@ -136,10 +136,10 @@ fn test_url_prioque() {
 /// Extracted information from an html page
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DocData {
-    text: Arc<String>,
-    url: Arc<String>,
-    langs: HashSet<Arc<String>>,
-    links: HashSet<Arc<String>>,
+    text: Arc<str>,
+    url: Arc<str>,
+    langs: HashSet<Arc<str>>,
+    links: HashSet<Arc<str>>,
 }
 
 /// Command type to control workers with
@@ -157,6 +157,7 @@ struct Paths {
     proc: PathBuf,
     dutch_w: PathBuf,
     domain_c: PathBuf,
+    train_ds: PathBuf,
 }
 
 impl Paths {
@@ -167,6 +168,8 @@ impl Paths {
         let proc = base.join("proc");
         let dutch_w = base.join("dutch_webpages");
         let domain_c = base.join("domain_counts");
+        let train_ds = base.join("train_ds.jsonl");
+
 
         Self {
             que,
@@ -174,6 +177,7 @@ impl Paths {
             proc,
             dutch_w,
             domain_c,
+            train_ds,
         }
     }
 }
@@ -194,7 +198,7 @@ impl AsRefStr for &String {
     }
 }
 
-impl AsRefStr for Arc<String> {
+impl AsRefStr for Arc<str> {
     fn as_ref_str(&self) -> &str {
         self.as_ref()
     }
@@ -206,6 +210,29 @@ impl AsRefStr for &str {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct TrainSample {
+    url: Arc<str>,
+    is_dutch: bool,
+    #[serde(skip, default="TrainSample::default_contents")]
+    contents: Arc<str>,
+}
+
+impl TrainSample {
+
+    fn default_contents() -> Arc<str> {
+        "".to_string().into()
+    }
+
+    fn from_doc_data(doc_data: &DocData, is_dutch: bool) -> Self {
+        Self {
+            url: doc_data.url.clone(),
+            is_dutch,
+            contents: doc_data.text.clone(),
+        }
+    }
+}
+
 /// State of the crawler
 /// - `que`: que from which workers draw websites
 /// - `being processed`: websites currently being processed by workers
@@ -214,20 +241,22 @@ impl AsRefStr for &str {
 #[derive(Debug, Serialize, Deserialize)]
 struct CrawlerState {
     que: Mutex<UrlPrioQue>,
-    history: DashSet<Arc<String>>,
-    being_processed: DashSet<Arc<String>>,
-    dutch_webpages: Mutex<Vec<Arc<String>>>,
-    domain_counts: DashMap<Arc<String>, usize>,
+    history: DashSet<Arc<str>>,
+    being_processed: DashSet<Arc<str>>,
+    dutch_webpages: Mutex<Vec<Arc<str>>>,
+    domain_counts: DashMap<Arc<str>, usize>,
+    train_dataset: Mutex<Vec<TrainSample>>,
 }
 
 impl CrawlerState {
-    pub fn new(start_urls: impl IntoIterator<Item = Arc<String>>) -> Self {
+    pub fn new(start_urls: impl IntoIterator<Item = Arc<str>>) -> Self {
         Self {
             que: Mutex::new(start_urls.into_iter().map(|u| (0, u)).collect()),
             history: DashSet::new(),
             being_processed: DashSet::new(),
             dutch_webpages: Default::default(),
             domain_counts: Default::default(),
+            train_dataset: Default::default(),
         }
     }
 
@@ -242,11 +271,13 @@ impl CrawlerState {
     fn lines_to_file(
         file: impl AsRef<Path>,
         lines: impl IntoIterator<Item = impl AsRefStr>,
+        append: bool,
     ) -> Result<()> {
         let mut writer = BufWriter::new(
             std::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
+                .append(append)
                 .open(file)?,
         );
         for l in lines {
@@ -262,7 +293,7 @@ impl CrawlerState {
         return !(url.contains("\t") || url.contains("\n"));
     }
 
-    fn domain_counts_to_lines(&self) -> impl Iterator<Item = Arc<String>> {
+    fn domain_counts_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
         let items: Vec<_> = self
             .domain_counts
             .iter()
@@ -276,7 +307,19 @@ impl CrawlerState {
         result
     }
 
-    fn que_to_lines(&self) -> impl Iterator<Item = Arc<String>> {
+    fn drain_train_dataset_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
+        let items: Vec<_> = self.train_dataset.lock().drain(..).collect();
+        let result = items.into_iter().flat_map(|ts| {
+            [
+                serde_json::ser::to_string(&ts).unwrap().into(),
+                NEW_LINE.clone(),
+            ]
+        });
+
+        result
+    }
+
+    fn que_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
         let items: Vec<_> = {
             let q = self.que.lock();
             q.inner()
@@ -296,34 +339,32 @@ impl CrawlerState {
         result
     }
 
-    fn urls_to_lines(
-        s: impl IntoIterator<Item = Arc<String>>,
-    ) -> impl Iterator<Item = Arc<String>> {
+    fn urls_to_lines(s: impl IntoIterator<Item = Arc<str>>) -> impl Iterator<Item = Arc<str>> {
         s.into_iter()
             .filter(|u| Self::url_filter(&**u))
             .flat_map(|url_arc| [url_arc, NEW_LINE.clone()])
         // .collect()
     }
 
-    fn dashset_to_lines(s: &DashSet<Arc<String>>) -> impl Iterator<Item = Arc<String>> {
+    fn dashset_to_lines(s: &DashSet<Arc<str>>) -> impl Iterator<Item = Arc<str>> {
         let items: Vec<_> = s.iter().map(|r| r.clone()).collect();
         Self::urls_to_lines(items)
     }
 
-    fn hist_to_lines(&self) -> impl Iterator<Item = Arc<String>> {
+    fn hist_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
         Self::dashset_to_lines(&self.history)
     }
 
-    fn being_processed_to_lines(&self) -> impl Iterator<Item = Arc<String>> {
+    fn being_processed_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
         Self::dashset_to_lines(&self.being_processed)
     }
 
-    fn dutch_wp_to_lines(&self) -> impl Iterator<Item = Arc<String>> {
+    fn dutch_wp_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
         let items: Vec<_> = self.dutch_webpages.lock().iter().cloned().collect();
         Self::urls_to_lines(items)
     }
 
-    fn counted_strs_from_lines(s: impl AsRef<str>) -> Vec<(usize, Arc<String>)> {
+    fn counted_strs_from_lines(s: impl AsRef<str>) -> Vec<(usize, Arc<str>)> {
         let s = s.as_ref();
         s.lines()
             .filter_map(|l| {
@@ -343,11 +384,12 @@ impl CrawlerState {
 
         let paths = Paths::make(p);
 
-        Self::lines_to_file(paths.que, self.que_to_lines())?;
-        Self::lines_to_file(paths.hist, self.hist_to_lines())?;
-        Self::lines_to_file(paths.proc, self.being_processed_to_lines())?;
-        Self::lines_to_file(paths.dutch_w, self.dutch_wp_to_lines())?;
-        Self::lines_to_file(paths.domain_c, self.domain_counts_to_lines())?;
+        Self::lines_to_file(paths.que, self.que_to_lines(), false)?;
+        Self::lines_to_file(paths.hist, self.hist_to_lines(), false)?;
+        Self::lines_to_file(paths.proc, self.being_processed_to_lines(), false)?;
+        Self::lines_to_file(paths.dutch_w, self.dutch_wp_to_lines(), false)?;
+        Self::lines_to_file(paths.domain_c, self.domain_counts_to_lines(), false)?;
+        Self::lines_to_file(paths.train_ds, self.drain_train_dataset_to_lines(), true)?;
 
         Ok(())
     }
@@ -362,29 +404,28 @@ impl CrawlerState {
             .into_iter()
             .collect();
 
-        let history: DashSet<Arc<String>> = read_to_string(paths.hist)?
+        let history: DashSet<Arc<str>> = read_to_string(paths.hist)?
             .lines()
             .map(ToOwned::to_owned)
-            .map(Arc::new)
+            .map(Arc::from)
             .collect();
 
-        let dutch_webpages: Vec<Arc<String>> = read_to_string(paths.dutch_w)?
+        let dutch_webpages: Vec<Arc<str>> = read_to_string(paths.dutch_w)?
             .lines()
             .map(ToOwned::to_owned)
-            .map(Arc::new)
+            .map(Arc::from)
             .collect();
 
-        let being_processed: DashSet<Arc<String>> = read_to_string(paths.proc)?
+        let being_processed: DashSet<Arc<str>> = read_to_string(paths.proc)?
             .lines()
             .map(ToOwned::to_owned)
-            .map(Arc::new)
+            .map(Arc::from)
             .collect();
 
-        let domain_counts: DashMap<Arc<String>, usize> =
+        let domain_counts: DashMap<Arc<str>, usize> =
             Self::counted_strs_from_lines(read_to_string(paths.domain_c)?)
                 .into_iter()
                 .map(|(c, u)| (u, c))
-                .into_iter()
                 .collect();
 
         Ok(Self {
@@ -393,6 +434,7 @@ impl CrawlerState {
             being_processed,
             dutch_webpages: Mutex::new(dutch_webpages),
             domain_counts,
+            train_dataset: Mutex::new(Vec::new()),
         })
     }
 }
@@ -400,6 +442,7 @@ impl CrawlerState {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 struct CrawlerConfig {
     save_file: Option<PathBuf>,
+    collect_train_data: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -416,13 +459,15 @@ impl From<(CrawlerState, CrawlerConfig)> for Crawler {
 
 impl Crawler {
     fn new(
-        start_urls: impl IntoIterator<Item = Arc<String>>,
+        start_urls: impl IntoIterator<Item = Arc<str>>,
         save_file: impl Into<Option<PathBuf>>,
+        collect_train_data: bool,
     ) -> Self {
         Self {
             state: CrawlerState::new(start_urls),
             cfg: CrawlerConfig {
                 save_file: save_file.into(),
+                collect_train_data,
             },
         }
     }
@@ -450,7 +495,7 @@ impl Crawler {
     fn get_host_count(&self, url: &str) -> usize {
         url::Url::parse(&url)
             .ok()
-            .and_then(|u| u.host_str().map(ToOwned::to_owned))
+            .and_then(|u| u.host_str().map(Arc::from))
             .map(|host| self.state.domain_counts.get(&host).map(|c| *c).unwrap_or(0))
             .unwrap_or(usize::max_value())
     }
@@ -489,12 +534,12 @@ impl Crawler {
         let doc = Document::from(txt.as_str());
         // let doc = Document::from_read(resp)?;
 
-        let text = "".to_string().into();
+        let text = txt.into();
         let langs = doc
             .find(Name("html"))
             .filter_map(|n| n.attr("lang"))
             .map(ToOwned::to_owned)
-            .map(Arc::new)
+            .map(Arc::from)
             .collect();
 
         let links = doc
@@ -516,7 +561,7 @@ impl Crawler {
                 Err(_) => None,
             })
             .filter(|u| url::Url::parse(u).is_ok())
-            .map(Arc::new)
+            .map(Arc::from)
             .collect();
 
         Ok(DocData {
@@ -527,29 +572,43 @@ impl Crawler {
         })
     }
 
-    fn increment_host_count(&self, url: Arc<String>) {
-        if let Ok(url_parsed) = url::Url::parse(url.as_str()) {
+    fn increment_host_count(&self, url: Arc<str>) {
+        if let Ok(url_parsed) = url::Url::parse(&*url) {
             if let Some(host) = url_parsed.host_str() {
                 *self
                     .state
                     .domain_counts
-                    .entry(Arc::new(host.into()))
+                    .entry(Arc::from(host.to_string()))
                     .or_insert(0) += 1;
             }
+        }
+    }
+
+    fn maybe_save_doc_as_train_sample(&self, doc: &DocData, is_dutch: bool) {
+        if self.cfg.collect_train_data {
+            self.state
+                .train_dataset
+                .lock()
+                .push(TrainSample::from_doc_data(doc, is_dutch));
         }
     }
 
     async fn process_url(&self, url: &str) {
         if let Ok(data) = Self::get_doc_data(&url).await {
             if !self.is_dutch_doc(&data) {
+                if !data.langs.is_empty() {
+                    self.maybe_save_doc_as_train_sample(&data, false);
+                }
                 return;
             }
+
+            self.maybe_save_doc_as_train_sample(&data, true);
 
             println!("{}", data.url);
 
             self.state.dutch_webpages.lock().push(data.url);
 
-            let filtered_urls: Vec<Arc<String>> = data
+            let filtered_urls: Vec<Arc<str>> = data
                 .links
                 .iter()
                 // .map(|link| link.split('?').next().unwrap())
@@ -709,7 +768,7 @@ impl Crawler {
                 lc += 1;
                 std::thread::sleep(Duration::from_secs(30));
 
-                if lc % 5 == 0 {
+                if lc % 15 == 0 {
                     save();
                     self.state.que.lock().shuffle_inner();
                 }
@@ -758,15 +817,18 @@ struct Opt {
     num_workers: usize,
     // #[structopt(short, long, help = "Crawler configuration file")]
     // cfg_file: Option<PathBuf>,
+    #[structopt(long, help = "Collect training data for training URL classifier")]
+    collect_train_data: bool,
 }
 
 fn main() {
+    eprintln!("REMINDER: IS VPN ACTIVE?");
     let opt = Opt::from_args();
 
     let mut crawler_state: CrawlerState = opt
         .save_file
         .clone()
-        .and_then(|p| Some(CrawlerState::load_from_dir(p).unwrap()))
+        .and_then(|p| CrawlerState::load_from_dir(p).ok())
         // .and_then(|state_str| {
         //     serde_json::de::from_str(&state_str)
         //         .map_err(|e| {
@@ -784,6 +846,7 @@ fn main() {
 
     let crawler_cfg = CrawlerConfig {
         save_file: opt.save_file.clone(),
+        collect_train_data: opt.collect_train_data,
     };
 
     let crawler = Crawler::from((crawler_state, crawler_cfg));
@@ -816,6 +879,13 @@ async fn test_get_ip_addr() {
     } else {
         println!("couldn't get an IP address");
     }
+}
+
+#[test]
+fn check_mem() {
+    let sz_string = std::mem::size_of::<String>();
+    let sz_arc_string = std::mem::size_of::<Arc<str>>();
+    eprintln!("Stringsz: {}, Arc sz: {}", sz_string, sz_arc_string);
 }
 
 // #[test]

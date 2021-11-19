@@ -7,12 +7,15 @@ name = "pypi"
 scrapy = "*"
 textblob = "*"
 polyglot = "*"
-pyicu = "*"
-pycld2 = "*"
+# pyicu = "*"
+# pycld2 = "*"
 beautifulsoup4 = "*"
 joblib = "*"
 orjson = "*"
 tqdm = "*"
+pandas = "*"
+# pandas = "*"
+# pandas = "*"
 
 [dev-packages]
 
