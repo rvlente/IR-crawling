@@ -1,20 +1,23 @@
 #![feature(map_first_last)]
 
+mod prio_que;
+
 use anyhow::Result;
-use crossbeam::{channel};
+use crossbeam::channel;
 use dashmap::{DashMap, DashSet};
-use parking_lot::{ Mutex};
+use parking_lot::Mutex;
 use std::{
     collections::{BTreeMap, HashSet},
-    io::{ BufWriter, Write},
+    io::{BufWriter, Write},
     iter::FromIterator,
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
     sync::{atomic::AtomicBool, Arc},
-    time::{Duration},
+    time::Duration,
 };
 // use parking_lot::Mutex;
+use prio_que::UrlPrioQue;
 use rand::prelude::*;
 use regex::Regex;
 use select::{document::Document, predicate::Name};
@@ -38,96 +41,6 @@ static NEW_LINE: Arc<str> = "\n".to_string().into();
 
 #[dynamic]
 static TAB: Arc<str> = "\t".to_string().into();
-
-/// Priority queue optimized for many items with the same priority
-/// Consits of a BTreeMap (which acts as a regular priority que)
-/// with the priority as a key, and values with that priority in a
-/// list associated to that key
-#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct UrlPrioQue {
-    que: BTreeMap<usize, Vec<Arc<str>>>,
-}
-
-impl UrlPrioQue {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    /// Insert a key (domain visit count) and associated url as string into the que
-    fn insert(&mut self, domain_count: usize, url: Arc<str>) {
-        self.que
-            .entry(domain_count)
-            .or_insert_with(Default::default)
-            .push(url);
-    }
-
-    /// Get the top element from the que, this will be a url with the minimal domain count
-    fn pop(&mut self) -> Option<Arc<str>> {
-        let first_entry = self.que.first_entry();
-        if let Some(mut e) = first_entry {
-            if let Some(url) = e.get_mut().pop() {
-                if e.get().is_empty() {
-                    self.que.pop_first();
-                }
-                return Some(url);
-            }
-        }
-        None
-    }
-
-    /// Put multiple elements in the que
-    fn extend(&mut self, items: impl IntoIterator<Item = (usize, Arc<str>)>) {
-        for (c, u) in items {
-            self.insert(c, u);
-        }
-    }
-
-    /// Shuffle the elements of the vectors associated to the domain counts.
-    fn shuffle_inner(&mut self) {
-        self.que
-            .iter_mut()
-            .for_each(|(_, sites)| sites.shuffle(&mut rand::thread_rng()));
-    }
-
-    fn inner(&self) -> &BTreeMap<usize, Vec<Arc<str>>> {
-        &self.que
-    }
-}
-
-impl FromIterator<(usize, Arc<str>)> for UrlPrioQue {
-    fn from_iter<T: IntoIterator<Item = (usize, Arc<str>)>>(iter: T) -> Self {
-        let mut s = Self::default();
-        for (c, u) in iter {
-            s.insert(c, u);
-        }
-        s
-    }
-}
-
-#[test]
-fn test_url_prioque() {
-    let mut q = UrlPrioQue::new();
-
-    let insert_vals = |q: &mut UrlPrioQue| {
-        for v in [5, 1, 1, 1, 7] {
-            q.insert(v, v.to_string().into())
-        }
-    };
-
-    insert_vals(&mut q);
-    assert_eq!(q.pop(), Some("1".to_string().into()));
-    assert_eq!(q.pop(), Some("1".to_string().into()));
-    assert_eq!(q.pop(), Some("1".to_string().into()));
-    assert_eq!(q.pop(), Some("5".to_string().into()));
-    assert_eq!(q.pop(), Some("7".to_string().into()));
-
-    insert_vals(&mut q);
-
-    let serd = serde_json::ser::to_string(&q).unwrap();
-    let deser: UrlPrioQue = serde_json::de::from_str(&serd).unwrap();
-
-    assert_eq!(q, deser);
-}
 
 /// Extracted information from an html page
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,7 +79,6 @@ impl Paths {
         let domain_c = base.join("domain_counts");
         let train_ds = base.join("train_ds.jsonl");
 
-
         Self {
             que,
             hist,
@@ -176,6 +88,18 @@ impl Paths {
             train_ds,
         }
     }
+}
+
+#[test]
+fn test_paths() {
+    let base = Path::new("cache");
+    let paths = Paths::make(base);
+    assert_eq!(paths.que, base.join("que"));
+    assert_eq!(paths.hist, base.join("hist"));
+    assert_eq!(paths.proc, base.join("proc"));
+    assert_eq!(paths.dutch_w, base.join("dutch_webpages"));
+    assert_eq!(paths.domain_c, base.join("domain_counts"));
+    assert_eq!(paths.train_ds, base.join("train_ds.jsonl"));
 }
 
 trait AsRefStr {
@@ -210,12 +134,11 @@ impl AsRefStr for &str {
 struct TrainSample {
     url: Arc<str>,
     is_dutch: bool,
-    #[serde(skip, default="TrainSample::default_contents")]
+    #[serde(skip, default = "TrainSample::default_contents")]
     contents: Arc<str>,
 }
 
 impl TrainSample {
-
     fn default_contents() -> Arc<str> {
         "".to_string().into()
     }
@@ -247,7 +170,7 @@ struct CrawlerState {
 impl CrawlerState {
     pub fn new(start_urls: impl IntoIterator<Item = Arc<str>>) -> Self {
         Self {
-            que: Mutex::new(start_urls.into_iter().map(|u| (0, u)).collect()),
+            que: Mutex::new(start_urls.into_iter().map(|u| (0, 1.0, u)).collect()),
             history: DashSet::new(),
             being_processed: DashSet::new(),
             dutch_webpages: Default::default(),
@@ -259,7 +182,7 @@ impl CrawlerState {
     pub fn drain_being_processed(&mut self) {
         self.que
             .lock()
-            .extend(self.being_processed.iter().map(|url| (0, url.clone())));
+            .extend(self.being_processed.iter().map(|url| (0, 1.0, url.clone())));
 
         self.being_processed.clear();
     }
@@ -295,7 +218,7 @@ impl CrawlerState {
             .iter()
             .map(|r| (r.key().clone(), *r.value()))
             .collect();
-            items
+        items
             .into_iter()
             .filter(|(dom, _)| Self::url_filter(&**dom))
             .flat_map(|(dom, c)| [c.to_string().into(), TAB.clone(), dom, NEW_LINE.clone()])
@@ -309,8 +232,6 @@ impl CrawlerState {
                 NEW_LINE.clone(),
             ]
         })
-
-
     }
 
     fn que_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
@@ -324,12 +245,11 @@ impl CrawlerState {
         items
             .into_iter()
             .flat_map(|(c, us)| us.into_iter().map(|s| (c, s)).collect::<Vec<_>>())
-            .filter(|(_, u)| Self::url_filter(&**u))
+            .filter(|(_, u)| Self::url_filter(&*u.value))
             .flat_map(|(c, u)| {
                 // Some(format!("{}\t{}", c, u))
-                [c.to_string().into(), TAB.clone(), u, NEW_LINE.clone()]
+                [c.to_string().into(), TAB.clone(), u.key.to_string().into(), TAB.clone(), u.value.clone(), NEW_LINE.clone()]
             })
-
     }
 
     fn urls_to_lines(s: impl IntoIterator<Item = Arc<str>>) -> impl Iterator<Item = Arc<str>> {
@@ -369,6 +289,19 @@ impl CrawlerState {
             .collect()
     }
 
+    fn prio_counted_strs_from_lines(s: impl AsRef<str>) -> Vec<(usize, f64, Arc<str>)> {
+        let s = s.as_ref();
+        s.lines()
+            .filter_map(|l| {
+                let mut split = l.split('\t');
+                let count: usize = split.next()?.parse().ok()?;
+                let prio: f64 = split.next()?.parse().ok()?;
+                let url = split.next()?;
+                Some((count, prio, url.to_owned().into()))
+            })
+            .collect()
+    }
+
     pub fn save_to_dir(&self, dir: impl AsRef<Path>) -> Result<()> {
         let p = dir.as_ref();
         if !p.exists() {
@@ -393,7 +326,7 @@ impl CrawlerState {
 
         let paths = Paths::make(p);
 
-        let que: UrlPrioQue = Self::counted_strs_from_lines(read_to_string(paths.que)?)
+        let que: UrlPrioQue = Self::prio_counted_strs_from_lines(read_to_string(paths.que)?)
             .into_iter()
             .collect();
 
@@ -613,12 +546,14 @@ impl Crawler {
                 self.state.history.insert(url);
             }
 
+            let mut rng = rand::thread_rng();
+
             let extension: Vec<_> = filtered_urls
                 .into_iter()
                 .map(|u| {
                     let hc = self.get_host_count(&u);
                     self.increment_host_count(u.clone());
-                    (hc, u)
+                    (hc, rng.gen(), u)
                 })
                 .collect();
 
@@ -724,6 +659,8 @@ impl Crawler {
             .await
             .expect("Couldn't get IP address: unsafe");
 
+        eprintln!("CURRENT IP: {:?}", start_ip);
+
         let running = Arc::new(AtomicBool::new(true));
         let r2 = running.clone();
 
@@ -763,7 +700,6 @@ impl Crawler {
 
                 if lc % 15 == 0 {
                     save();
-                    self.state.que.lock().shuffle_inner();
                 }
 
                 let (ip_sndr, ip_rcvr) = channel::unbounded();
@@ -855,8 +791,6 @@ fn main() {
     // let crawler = Crawler::new(["https://www.wikipedia.nl/".to_string()], opt.save_file);
     runtime.block_on(crawler.run(opt.num_workers));
 }
-
-
 
 #[test]
 fn test_url() {

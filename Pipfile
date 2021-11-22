@@ -17,6 +17,7 @@ pandas = "*"
 # pandas = "*"
 # pandas = "*"
 pytest = "*"
+matplotlib = "*"
 
 [dev-packages]
 
