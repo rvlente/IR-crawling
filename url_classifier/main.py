@@ -28,7 +28,7 @@ def _extract_trigram_features(url):
 
 
 def load_dataset(take=None, split=0.75, feature_extractor=_extract_trigram_features):
-    with open('/home/nils/Documents/school/information_retrieval/IR-crawling/url_classifier/url_data.csv') as csvfile:
+    with open('/home/nils/Documents/school/information_retrieval/IR-crawling/cache/url_data.csv') as csvfile:
         reader = csv.reader(csvfile, delimiter=',')
         next(reader)  # Skip header.
 
