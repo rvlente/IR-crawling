@@ -16,6 +16,7 @@ tqdm = "*"
 pandas = "*"
 # pandas = "*"
 # pandas = "*"
+pytest = "*"
 
 [dev-packages]
 
