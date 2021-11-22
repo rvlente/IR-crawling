@@ -8,10 +8,10 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, PartialOrd, Default)]
-pub struct CompFloat(f64);
+pub struct CompFloat(f32);
 
 impl CompFloat {
-    pub fn new(f: f64) -> Result<Self, &'static str> {
+    pub fn new(f: f32) -> Result<Self, &'static str> {
         if f.is_finite() {
             Ok(CompFloat(f))
         } else {
@@ -41,7 +41,7 @@ pub struct PrioItem {
 }
 
 impl PrioItem {
-    pub fn new(key: f64, value: Arc<str>) -> Self {
+    pub fn new(key: f32, value: Arc<str>) -> Self {
         PrioItem {
             key: CompFloat::new(key).unwrap_or_default(),
             value,
@@ -76,7 +76,7 @@ impl UrlPrioQue {
     }
 
     /// Insert a key (domain visit count) and associated url as string into the que
-    pub fn insert(&mut self, domain_count: usize, prio: f64, url: Arc<str>) {
+    pub fn insert(&mut self, domain_count: usize, prio: f32, url: Arc<str>) {
         self.que
             .entry(domain_count)
             .or_insert_with(Default::default)
@@ -98,7 +98,7 @@ impl UrlPrioQue {
     }
 
     /// Put multiple elements in the que
-    pub fn extend(&mut self, items: impl IntoIterator<Item = (usize, f64, Arc<str>)>) {
+    pub fn extend(&mut self, items: impl IntoIterator<Item = (usize, f32, Arc<str>)>) {
         for (c, p, u) in items {
             self.insert(c, p, u);
         }
@@ -109,8 +109,8 @@ impl UrlPrioQue {
     }
 }
 
-impl FromIterator<(usize, f64, Arc<str>)> for UrlPrioQue {
-    fn from_iter<T: IntoIterator<Item = (usize, f64, Arc<str>)>>(iter: T) -> Self {
+impl FromIterator<(usize, f32, Arc<str>)> for UrlPrioQue {
+    fn from_iter<T: IntoIterator<Item = (usize, f32, Arc<str>)>>(iter: T) -> Self {
         let mut s = Self::default();
         for (c, p, u) in iter {
             s.insert(c, p, u);

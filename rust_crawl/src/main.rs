@@ -289,13 +289,13 @@ impl CrawlerState {
             .collect()
     }
 
-    fn prio_counted_strs_from_lines(s: impl AsRef<str>) -> Vec<(usize, f64, Arc<str>)> {
+    fn prio_counted_strs_from_lines(s: impl AsRef<str>) -> Vec<(usize, f32, Arc<str>)> {
         let s = s.as_ref();
         s.lines()
             .filter_map(|l| {
                 let mut split = l.split('\t');
                 let count: usize = split.next()?.parse().ok()?;
-                let prio: f64 = split.next()?.parse().ok()?;
+                let prio: f32 = split.next()?.parse().ok()?;
                 let url = split.next()?;
                 Some((count, prio, url.to_owned().into()))
             })
@@ -638,9 +638,11 @@ impl Crawler {
         n_workers: usize,
     ) {
         eprintln!("STOPPING CRAWLER");
+
         for _ in 0..n_workers {
             to_worker.send(WorkerCmd::Stop).unwrap();
         }
+        
         for _ in 0..n_workers {
             loop {
                 match from_worker.recv() {
