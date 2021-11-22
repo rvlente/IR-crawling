@@ -7,9 +7,8 @@ use crossbeam::channel;
 use dashmap::{DashMap, DashSet};
 use parking_lot::Mutex;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::HashSet,
     io::{BufWriter, Write},
-    iter::FromIterator,
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -248,7 +247,14 @@ impl CrawlerState {
             .filter(|(_, u)| Self::url_filter(&*u.value))
             .flat_map(|(c, u)| {
                 // Some(format!("{}\t{}", c, u))
-                [c.to_string().into(), TAB.clone(), u.key.to_string().into(), TAB.clone(), u.value.clone(), NEW_LINE.clone()]
+                [
+                    c.to_string().into(),
+                    TAB.clone(),
+                    u.key.to_string().into(),
+                    TAB.clone(),
+                    u.value,
+                    NEW_LINE.clone(),
+                ]
             })
     }
 
@@ -642,7 +648,7 @@ impl Crawler {
         for _ in 0..n_workers {
             to_worker.send(WorkerCmd::Stop).unwrap();
         }
-        
+
         for _ in 0..n_workers {
             loop {
                 match from_worker.recv() {

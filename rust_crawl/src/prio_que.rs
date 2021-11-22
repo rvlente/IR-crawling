@@ -1,13 +1,14 @@
 use std::{
     collections::{BTreeMap, BinaryHeap},
     iter::FromIterator,
+    ops::Deref,
     sync::Arc,
 };
 
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, PartialOrd, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct CompFloat(f32);
 
 impl CompFloat {
@@ -20,6 +21,14 @@ impl CompFloat {
     }
 }
 
+impl Deref for CompFloat {
+    type Target = f32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl ToString for CompFloat {
     fn to_string(&self) -> String {
         self.0.to_string()
@@ -27,6 +36,12 @@ impl ToString for CompFloat {
 }
 
 impl Eq for CompFloat {}
+
+impl PartialOrd for CompFloat {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
 
 impl Ord for CompFloat {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
