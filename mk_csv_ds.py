@@ -33,6 +33,9 @@ def main(args):
 
     df = pd.DataFrame.from_dict(data)
 
+    # drop duplicates of the 'url' field
+    df = df.drop_duplicates(subset='url')
+
     # write the output
     df.to_csv(args.output, index=False)
 

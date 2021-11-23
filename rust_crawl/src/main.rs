@@ -25,6 +25,7 @@ use static_init::dynamic;
 use std::fmt::Debug;
 use structopt::StructOpt;
 use tokio::runtime::Builder;
+use anyhow::anyhow;
 
 #[dynamic]
 static WEB_RE: Regex = Regex::new(r#"https?://([^/]*)/?.*"#).unwrap();
@@ -129,10 +130,13 @@ impl AsRefStr for &str {
     }
 }
 
+const CONTEXT_LEN: usize = 1000;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct TrainSample {
     url: Arc<str>,
     is_dutch: bool,
+    context: String,
     #[serde(skip, default = "TrainSample::default_contents")]
     contents: Arc<str>,
 }
@@ -142,11 +146,58 @@ impl TrainSample {
         "".to_string().into()
     }
 
-    fn from_doc_data(doc_data: &DocData, is_dutch: bool) -> Self {
+    fn new(doc_data: &DocData, parent_content: impl AsRefStr, is_dutch: bool) -> Self {
+
+        let parent_content = parent_content.as_ref_str();
+        let url_loc = parent_content.find(doc_data.url.as_ref_str());
+
+        let context = if let Some(url_loc) = url_loc {
+
+            let start = if url_loc > CONTEXT_LEN {
+                url_loc - CONTEXT_LEN
+            } else {
+                0
+            };
+
+            let end = if url_loc + CONTEXT_LEN < parent_content.len() {
+                url_loc + CONTEXT_LEN
+            } else {
+                parent_content.len()
+            };
+
+            parent_content.chars().take(end).skip(start).collect()
+        } else {
+            
+            // std::process::exit(1);
+            "".to_string()
+        };
+
+
         Self {
             url: doc_data.url.clone(),
+            context,
             is_dutch,
             contents: doc_data.text.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+pub enum CollectTrainDataMode {
+    Disabled,
+    Full,
+    LinksOnly
+}
+
+impl FromStr for CollectTrainDataMode {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "disabled" => Ok(Self::Disabled),
+            "full" => Ok(Self::Full),
+            "links_only" => Ok(Self::LinksOnly),
+            _ => Err(anyhow!("Invalid collect_train_data mode: {}", s))
         }
     }
 }
@@ -374,7 +425,8 @@ impl CrawlerState {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 struct CrawlerConfig {
     save_file: Option<PathBuf>,
-    collect_train_data: bool,
+    collect_train_data: CollectTrainDataMode,
+    save_every: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -393,13 +445,14 @@ impl Crawler {
     fn new(
         start_urls: impl IntoIterator<Item = Arc<str>>,
         save_file: impl Into<Option<PathBuf>>,
-        collect_train_data: bool,
+        collect_train_data: CollectTrainDataMode,
     ) -> Self {
         Self {
             state: CrawlerState::new(start_urls),
             cfg: CrawlerConfig {
                 save_file: save_file.into(),
                 collect_train_data,
+                save_every: 10,
             },
         }
     }
@@ -461,12 +514,58 @@ impl Crawler {
         txt
     }
 
-    async fn get_doc_data(url: &str) -> Result<DocData> {
+    async fn acquire_training_data(&self, parent_doc: &DocData) -> anyhow::Result<()> {
+        //TODO fix this
+
+        let to_store: Vec<_> = match self.cfg.collect_train_data {
+            CollectTrainDataMode::Disabled => Vec::new(),
+            CollectTrainDataMode::Full => {
+                let mut result = Vec::new();
+
+                for url in &parent_doc.links {
+                    let doc_data= self.get_doc_data(url.as_ref()).await?;
+                    let is_dutch = self.is_dutch_doc(&doc_data);
+
+                    if is_dutch {
+                        result.push(
+                            TrainSample::new(&doc_data, parent_doc.text.as_ref(), true)
+                        );
+                    } else if !doc_data.langs.is_empty() {
+                        result.push(
+                            TrainSample::new(&doc_data, parent_doc.text.as_ref(), false)
+                        );
+                    }
+                }  
+                
+                result
+            },
+            CollectTrainDataMode::LinksOnly => {
+                let is_dutch = self.is_dutch_doc(&parent_doc);
+                if is_dutch {
+                    vec![TrainSample::new(&parent_doc, "", true)]
+                } else if parent_doc.langs.is_empty() {
+                    vec![TrainSample::new(&parent_doc, "", false)]
+                } else {
+                    Vec::new()
+                }
+                
+            },
+        };
+
+        if !to_store.is_empty() {
+            self.state.train_dataset.lock().extend(to_store);
+        }
+        
+        Ok(())
+    }
+
+    async fn get_doc_data(&self, url: &str) -> Result<DocData> {
         let txt = Self::make_request(url).await?;
         let doc = Document::from(txt.as_str());
         // let doc = Document::from_read(resp)?;
 
-        let text = txt.into();
+        let text: Arc<str> = txt.into();
+
         let langs = doc
             .find(Name("html"))
             .filter_map(|n| n.attr("lang"))
@@ -474,7 +573,7 @@ impl Crawler {
             .map(Arc::from)
             .collect();
 
-        let links = doc
+        let links: HashSet<Arc<str>> = doc
             .find(Name("a"))
             .filter_map(|n| n.attr("href"))
             .map(ToOwned::to_owned)
@@ -516,31 +615,24 @@ impl Crawler {
         }
     }
 
-    fn maybe_save_doc_as_train_sample(&self, doc: &DocData, is_dutch: bool) {
-        if self.cfg.collect_train_data {
-            self.state
-                .train_dataset
-                .lock()
-                .push(TrainSample::from_doc_data(doc, is_dutch));
-        }
-    }
+
 
     async fn process_url(&self, url: &str) {
-        if let Ok(data) = Self::get_doc_data(url).await {
-            if !self.is_dutch_doc(&data) {
-                if !data.langs.is_empty() {
-                    self.maybe_save_doc_as_train_sample(&data, false);
-                }
+        if let Ok(doc_data) = self.get_doc_data(url).await {
+
+            if !self.is_dutch_doc(&doc_data) {
                 return;
             }
 
-            self.maybe_save_doc_as_train_sample(&data, true);
+            if self.cfg.collect_train_data != CollectTrainDataMode::Disabled {
+                let _ = self.acquire_training_data(&doc_data).await;
+            }
 
-            println!("{}", data.url);
+            println!("{}", doc_data.url);
 
-            self.state.dutch_webpages.lock().push(data.url);
+            self.state.dutch_webpages.lock().push(doc_data.url);
 
-            let filtered_urls: Vec<Arc<str>> = data
+            let filtered_urls: Vec<Arc<str>> = doc_data
                 .links
                 .iter()
                 // .map(|link| link.split('?').next().unwrap())
@@ -706,7 +798,7 @@ impl Crawler {
                 lc += 1;
                 std::thread::sleep(Duration::from_secs(30));
 
-                if lc % 15 == 0 {
+                if lc % self.cfg.save_every == 0 {
                     save();
                 }
 
@@ -754,8 +846,11 @@ struct Opt {
     num_workers: usize,
     // #[structopt(short, long, help = "Crawler configuration file")]
     // cfg_file: Option<PathBuf>,
-    #[structopt(long, help = "Collect training data for training URL classifier")]
-    collect_train_data: bool,
+    #[structopt(long, default_value = "disabled", help = "Mode to collect train data, must be one of: ['disabled', 'full', 'links_only']")]
+    collect_train_data: CollectTrainDataMode,
+    
+    #[structopt(long, help = "Save every n loops", default_value = "10")]
+    save_every: usize,
 }
 
 fn main() {
@@ -784,6 +879,7 @@ fn main() {
     let crawler_cfg = CrawlerConfig {
         save_file: opt.save_file.clone(),
         collect_train_data: opt.collect_train_data,
+        save_every: opt.save_every,
     };
 
     let crawler = Crawler::from((crawler_state, crawler_cfg));
