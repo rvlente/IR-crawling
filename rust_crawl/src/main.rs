@@ -193,10 +193,10 @@ impl FromStr for CollectTrainDataMode {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        match s.to_lowercase().replace(['-','_'], "").as_str() {
             "disabled" => Ok(Self::Disabled),
             "full" => Ok(Self::Full),
-            "links_only" => Ok(Self::LinksOnly),
+            "linksonly" => Ok(Self::LinksOnly),
             _ => Err(anyhow!("Invalid collect_train_data mode: {}", s))
         }
     }
