@@ -20,6 +20,7 @@ pytest = "*"
 matplotlib = "*"
 mlflow = "*"
 xgboost = "*"
+plotly = "*"
 
 [dev-packages]
 

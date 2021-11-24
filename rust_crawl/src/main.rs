@@ -4,29 +4,9 @@ mod prio_que;
 mod utils;
 mod crawler;
 
-use anyhow::Result;
 use crawler::config::CollectTrainDataMode;
-use crossbeam::channel;
-use dashmap::{DashMap, DashSet};
-use parking_lot::Mutex;
-use utils::AsRefStr;
-use std::{
-    collections::HashSet,
-    io::{BufWriter, Write},
-    net::IpAddr,
-    path::{Path, PathBuf},
-    str::FromStr,
-    sync::{atomic::AtomicBool, Arc},
-    time::Duration,
-};
+use std::{path::{PathBuf}, sync::Arc};
 // use parking_lot::Mutex;
-use anyhow::anyhow;
-use prio_que::UrlPrioQue;
-use rand::prelude::*;
-use regex::Regex;
-use select::{document::Document, predicate::Name};
-use serde::{Deserialize, Serialize};
-use static_init::dynamic;
 use std::fmt::Debug;
 use structopt::StructOpt;
 use tokio::runtime::Builder;
