@@ -91,8 +91,8 @@ class Args:
 def get_args() -> Args:
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--datafile', type=str, required=True, help="csv file containing the data")
-    parser.add_argument('-n', '--n_samples', type=int, default=None, help="number of samples to use after dropping na")
-    parser.add_argument('-k', '--top_k_ngrams', type=int, default=500, help="number of ngrams to use")
+    parser.add_argument('-n', '--n-samples', type=int, default=None, help="number of samples to use after dropping na")
+    parser.add_argument('-k', '--top-k-ngrams', type=int, default=500, help="number of ngrams to use")
     parser.add_argument('--n-estimators', type=int, default=500, help="number of estimators for the classifier")
     parser.add_argument('--ngram-size', type=int, default=2, help="ngram size for the classifier")
 
@@ -101,7 +101,7 @@ def get_args() -> Args:
     return Args(**vars(args))
 
 
-def train_and_classify(train_data: list[str], targets: list, test_feats: list[str], top_k_ngrams, n_estimators, ngram_size):
+def train_and_classify(train_data: list[str], targets: list, test_feats: list[str], top_k_ngrams=500, n_estimators=500, ngram_size=2):
     # clf = RandomForestClassifier(n_estimators=500, random_state=42)
     # clf = GradientBoostingClassifier(n_estimators=500, random_state=42)
     clf = UrlClassifier(top_k_ngrams=top_k_ngrams, n_estimators=n_estimators, ngram_size=ngram_size)
@@ -140,69 +140,27 @@ def main(args: Args):
 
     urls_train, urls_test, labels_train, labels_test = train_test_split(features_strs, labels, test_size=0.2, random_state=42)
 
-    # classification using all features
+    # train and classify
+    predictions = train_and_classify(
+        urls_train, 
+        labels_train, 
+        urls_test, 
+        top_k_ngrams=args.top_k_ngrams, 
+        n_estimators=args.n_estimators, 
+        ngram_size=args.ngram_size
+    )
 
-    # predictions = train_and_classify(urls_train, labels_train, urls_test, args.top_k_ngrams)
-    # evaluation = evaluate(predictions, labels_test)
+    # evaluate
+    evaluation = evaluate(predictions, labels_test)
 
-    # Compare results for different values of k
 
-    results = defaultdict(list)
-
-    for top_k_ngrams in [100, 200, 300, 400, 500]:
-        print(f"Top k ngrams: {top_k_ngrams}")
-        predictions = train_and_classify(urls_train, labels_train, urls_test, top_k_ngrams, args.n_estimators, args.ngram_size)
-        evaluation = evaluate(predictions, labels_test)
-
-        results["top_k_ngrams"].append(top_k_ngrams)
-        results["metric"].append("precision")
-        results["value"].append(evaluation.precision)
-
-        results["top_k_ngrams"].append(top_k_ngrams)
-        results["metric"].append("recall")
-        results["value"].append(evaluation.recall)
-
-        results["top_k_ngrams"].append(top_k_ngrams)
-        results["metric"].append("f1")
-        results["value"].append(evaluation.f1)
-
-    results = pd.DataFrame(results)
-
-    fig = px.line(results, x="top_k_ngrams", y="value", color="metric", title=f"Performance of different top k ngrams, for {n_samples} samples")
-    mlflow.log_figure(fig, "results_k_ngrams.html")
-
-    # Compare results for different values of estimators
-
-    results = defaultdict(list)
-
-    for n_estimators in [25, 50, 75, 100, 200, 300, 400, 500]:
-        print(f"N estimators: {n_estimators}")
-        predictions = train_and_classify(urls_train, labels_train, urls_test, args.top_k_ngrams, n_estimators, args.ngram_size)
-        evaluation = evaluate(predictions, labels_test)
-
-        results["n_estimators"].append(n_estimators)
-        results["metric"].append("precision")
-        results["value"].append(evaluation.precision)
-
-        results["n_estimators"].append(n_estimators)
-        results["metric"].append("recall")
-        results["value"].append(evaluation.recall)
-
-        results["n_estimators"].append(n_estimators)
-        results["metric"].append("f1")
-        results["value"].append(evaluation.f1)
-
-    results = pd.DataFrame(results)
-
-    fig = px.line(results, x="n_estimators", y="value", color="metric", title=f"Performance of different n estimators, for {n_samples} samples")
-
-    mlflow.log_figure(fig, "results_estimators.html")
-    # for func in (mlflow.log_metric, print):
-    #     func("precision_all_feats", evaluation.precision)
-    #     func("recall_all_feats", evaluation.recall)
-    #     func("f1_all_feats", evaluation.f1)
+    # mlflow.log_figure(fig, "results_estimators.html")
+    for func in (mlflow.log_metric, print):
+        func("precision_all_feats", evaluation.precision)
+        func("recall_all_feats", evaluation.recall)
+        func("f1_all_feats", evaluation.f1)
 
 
 if __name__ == '__main__':
-    with mlflow.start_run():
+    with mlflow.start_run(run_name="single"):
         main(get_args())
