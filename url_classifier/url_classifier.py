@@ -57,15 +57,13 @@ class UrlClassifier:
         def extract_fn(url: str, top_k_grams, n):
             ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, n))
             return [ngrams_in_url.get(g, 0) for g in top_k_grams]
-            
-        t = time.time()
+            1
         if parallel_feature_extraction:
             n_cpus = multiprocessing.cpu_count()
             result = Parallel(n_jobs=n_cpus, batch_size=len(urls)//n_cpus)(delayed(extract_fn)(url, self._top_k_grams, self._n) for url in urls)
         else:
             result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
 
-        print(f"Extracting features took {time.time() - t} seconds")
 
         # for url in tqdm(urls, desc="Extracting features", disable=not use_tqdm):
         #     ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, self._n))
