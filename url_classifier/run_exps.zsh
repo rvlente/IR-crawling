@@ -3,16 +3,14 @@
 emulate -LR zsh
 set -e
 
-n_estimators=(500)
-top_ks=(500)
+n_estimators=(100 200 300 400 500)
+top_ks=(100 200 300 400 500)
 ngram_sizes=(1 2 3 4 5)
 
 
 path_to_current_dir=$(dirname $(realpath $0))
 script_path=${path_to_current_dir}/url_classifier.py
 data_path=${path_to_current_dir}/../cache/url_data2.csv
-
-export MLFLOW_EXPERIMENT_NAME="script_exps"
 
 for n_estimator in ${n_estimators[@]}; do
     for top_k in ${top_ks[@]}; do
