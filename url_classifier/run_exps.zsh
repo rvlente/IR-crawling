@@ -10,7 +10,7 @@ ngram_sizes=(1 2 3 4 5)
 
 path_to_current_dir=$(dirname $(realpath $0))
 script_path=${path_to_current_dir}/url_classifier.py
-data_path=${path_to_current_dir}/../cache/url_data2.csv
+data_path=${path_to_current_dir}/../data/url_data2.csv
 
 for n_estimator in ${n_estimators[@]}; do
     for top_k in ${top_ks[@]}; do

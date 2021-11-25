@@ -21,6 +21,7 @@ matplotlib = "*"
 mlflow = "*"
 xgboost = "*"
 plotly = "*"
+scikit-learn = "*"
 
 [dev-packages]
 

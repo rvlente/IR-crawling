@@ -20,6 +20,10 @@ from xgboost.sklearn import XGBClassifier
 import plotly.express as px
 import functools
 from scipy.sparse import csr_matrix
+from joblib import Parallel, delayed
+import time
+import multiprocessing
+
 
 memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
 
@@ -35,30 +39,45 @@ class UrlClassifier:
         self._label_encoder = LabelEncoder()
 
     def _extract_top_k_grams(self, train_urls: list[str]):
-        all_ngrams = [ng for url in train_urls for ng in nltk.ngrams(url, self._n)]
+        
+
+        all_ngrams = (nltk.ngrams(url, self._n) for url in train_urls)
+        all_ngrams = [item for sub_list in all_ngrams for item in sub_list]
+
         ngrams_freq = nltk.FreqDist(all_ngrams)
 
         self._top_k_grams = [x[0] for x in ngrams_freq.most_common(self._k)]
 
 
-    def _extract_features(self, urls: Iterable[str], use_tqdm=True) -> list[list[int]]:
+    def _extract_features(self, urls: Iterable[str], use_tqdm=True, parallel_feature_extraction=True) -> list[list[int]]:
 
         if self._top_k_grams is None:
             raise ValueError("Top k ngrams not set, please call fit first")
 
-        result = []
+        def extract_fn(url: str, top_k_grams, n):
+            ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, n))
+            return [ngrams_in_url.get(g, 0) for g in top_k_grams]
+            
+        t = time.time()
+        if parallel_feature_extraction:
+            n_cpus = multiprocessing.cpu_count()
+            result = Parallel(n_jobs=n_cpus, batch_size=len(urls)//n_cpus)(delayed(extract_fn)(url, self._top_k_grams, self._n) for url in urls)
+        else:
+            result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
 
-        for url in tqdm(urls, desc="Extracting features", disable=not use_tqdm):
-            ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, self._n))
-            result.append(
-                [ngrams_in_url.get(g, 0) for g in self._top_k_grams]
-            )
+        print(f"Extracting features took {time.time() - t} seconds")
+
+        # for url in tqdm(urls, desc="Extracting features", disable=not use_tqdm):
+        #     ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, self._n))
+        #     result.append(
+        #         [ngrams_in_url.get(g, 0) for g in self._top_k_grams]
+        #     )
             
         return result
 
-    def fit(self, train_urls: list[str], train_labels: list) -> 'UrlClassifier':
+    def fit(self, train_urls: list[str], train_labels: list, parallel_feature_extraction=True) -> 'UrlClassifier':
         self._extract_top_k_grams(train_urls)
-        train_features = self._extract_features(train_urls)
+        train_features = self._extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
         # train_features = np.array(train_features)
         
 
@@ -87,6 +106,8 @@ class Args:
     top_k_ngrams: int
     n_estimators: int
     ngram_size: int
+    exp_name: str
+    run_name: Optional[str]
 
 def get_args() -> Args:
     parser = argparse.ArgumentParser()
@@ -95,6 +116,8 @@ def get_args() -> Args:
     parser.add_argument('-k', '--top-k-ngrams', type=int, default=500, help="number of ngrams to use")
     parser.add_argument('--n-estimators', type=int, default=500, help="number of estimators for the classifier")
     parser.add_argument('--ngram-size', type=int, default=2, help="ngram size for the classifier")
+    parser.add_argument('--exp-name', type=str, default="default", help="name of the experiment")
+    parser.add_argument('--run-name', type=str, default=None, help="name of the run")
 
     args = parser.parse_args()
 
@@ -124,6 +147,13 @@ def evaluate(predictions, targets):
     return EvaluateResult(precision, recall, f1)
 
 def main(args: Args):
+
+    
+    mlflow.set_experiment(args.exp_name)
+
+    # set run name
+    if args.run_name is not None:
+        mlflow.set_tag("run_name", args.run_name)
 
     # log args to mlflow
     mlflow.log_params(vars(args))
@@ -162,5 +192,5 @@ def main(args: Args):
 
 
 if __name__ == '__main__':
-    with mlflow.start_run(run_name="single"):
-        main(get_args())
+    # with mlflow.start_run(run_name="single"):
+    main(get_args())
