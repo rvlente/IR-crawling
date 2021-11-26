@@ -57,7 +57,7 @@ class UrlClassifier:
         def extract_fn(url: str, top_k_grams, n):
             ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, n))
             return [ngrams_in_url.get(g, 0) for g in top_k_grams]
-            1
+            
         if parallel_feature_extraction:
             n_cpus = multiprocessing.cpu_count()
             result = Parallel(n_jobs=n_cpus, batch_size=len(urls)//n_cpus)(delayed(extract_fn)(url, self._top_k_grams, self._n) for url in urls)
@@ -190,5 +190,7 @@ def main(args: Args):
 
 
 if __name__ == '__main__':
+    # import sys
+    # print(sys.argv)
     # with mlflow.start_run(run_name="single"):
     main(get_args())
