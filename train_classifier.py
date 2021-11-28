@@ -34,10 +34,12 @@ class Args:
     top_k_ngrams: int
     n_estimators: int
     ngram_size: int
+    classifier_type: str
     exp_name: str
     run_name: Optional[str]
     no_evaluate: bool
     save_file: Optional[str]
+    classifier_type: str
 
 def get_args() -> Args:
     parser = argparse.ArgumentParser()
@@ -46,6 +48,7 @@ def get_args() -> Args:
     parser.add_argument('-k', '--top-k-ngrams', type=int, default=500, help="number of ngrams to use")
     parser.add_argument('--n-estimators', type=int, default=500, help="number of estimators for the classifier")
     parser.add_argument('--ngram-size', type=int, default=2, help="ngram size for the classifier")
+    parser.add_argument('-c', '--classifier-type', type=str, default="gradient_boosting", help="classifier type to use")
     parser.add_argument('--exp-name', type=str, default="default", help="name of the experiment")
     parser.add_argument('--run-name', type=str, default=None, help="name of the run")
     parser.add_argument('--no-evaluate', action='store_true', help="don't evaluate the model")
@@ -62,11 +65,12 @@ def train_and_classify(
         test_feats: list[str], 
         top_k_ngrams=500, 
         n_estimators=500, 
-        ngram_size=2
+        ngram_size=2,
+        clf_type="gradient_boosting",
     ) -> tuple[np.ndarray, UrlClassifier]:
     # clf = RandomForestClassifier(n_estimators=500, random_state=42)
     # clf = GradientBoostingClassifier(n_estimators=500, random_state=42)
-    clf = UrlClassifier(top_k_ngrams=top_k_ngrams, n_estimators=n_estimators, ngram_size=ngram_size)
+    clf = UrlClassifier(top_k_ngrams=top_k_ngrams, n_estimators=n_estimators, ngram_size=ngram_size, classifier_type=clf_type)
     clf.fit(train_data, targets)
     return clf.predict(test_feats), clf
 
@@ -105,7 +109,6 @@ def main(args: Args):
     features_strs = data["url"].to_list()
     labels = data["is_dutch"].to_list()
 
-    n_samples = len(features_strs)
 
     if args.no_evaluate:
         urls_train, labels_train = features_strs, labels
@@ -120,7 +123,8 @@ def main(args: Args):
         urls_test, 
         top_k_ngrams=args.top_k_ngrams, 
         n_estimators=args.n_estimators, 
-        ngram_size=args.ngram_size
+        ngram_size=args.ngram_size,
+        clf_type=args.classifier_type,
     )
 
     # evaluate
