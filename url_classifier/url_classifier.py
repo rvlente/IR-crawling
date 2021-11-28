@@ -9,6 +9,7 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.svm import SVC
 from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 import nltk
@@ -27,15 +28,24 @@ import multiprocessing
 
 memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
 
-# TODO manual label encoding
 class UrlClassifier:
 
-    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500) -> None:
+    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting") -> None:
+        """
+        :param ngram_size: The size of the ngrams to use
+        :param top_k_ngrams: The number of ngrams to use
+        :param n_estimators: The number of estimators for the classifier
+        :param classifier_type: The type of classifier to use. options: "gradient_boosting", "SVM"
+        """
         self._n = ngram_size
         self._k= top_k_ngrams
 
         self._top_k_grams: Optional[list[tuple]] = None
-        self._classif: XGBClassifier = XGBClassifier(n_estimators=n_estimators, use_label_encoder=False, tree_method='gpu_hist', verbosity=0)
+
+        if classifier_type == "gradient_boosting":
+            self._classif: XGBClassifier = XGBClassifier(n_estimators=n_estimators, use_label_encoder=False, tree_method='gpu_hist', verbosity=0)
+        elif classifier_type == "SVM":
+            self._classif: SVC = SVC(gamma='auto', kernel='linear', probability=True)
         self._label_encoder = LabelEncoder()
 
     def _extract_top_k_grams(self, train_urls: list[str]):
@@ -59,8 +69,11 @@ class UrlClassifier:
             return [ngrams_in_url.get(g, 0) for g in top_k_grams]
             
         if parallel_feature_extraction:
-            n_cpus = multiprocessing.cpu_count()
-            result = Parallel(n_jobs=n_cpus, batch_size=len(urls)//n_cpus)(delayed(extract_fn)(url, self._top_k_grams, self._n) for url in urls)
+            try:
+                n_cpus = multiprocessing.cpu_count()
+                result = Parallel(n_jobs=n_cpus, batch_size=len(urls)//n_cpus)(delayed(extract_fn)(url, self._top_k_grams, self._n) for url in urls)
+            except ValueError:
+                result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
         else:
             result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
 
@@ -96,101 +109,10 @@ class UrlClassifier:
     def predict_dutchiness(self, urls: list[str]) -> np.ndarray:
         return self.predict_proba(urls)[:,1]
     
+    def save(self, path: str) -> None:
+        joblib.dump(self, path)
 
-@dataclass
-class Args:
-    datafile: str
-    n_samples: Optional[int]
-    top_k_ngrams: int
-    n_estimators: int
-    ngram_size: int
-    exp_name: str
-    run_name: Optional[str]
+    @classmethod
+    def load(cls, path: str) -> 'UrlClassifier':
+        return joblib.load(path)
 
-def get_args() -> Args:
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--datafile', type=str, required=True, help="csv file containing the data")
-    parser.add_argument('-n', '--n-samples', type=int, default=None, help="number of samples to use after dropping na")
-    parser.add_argument('-k', '--top-k-ngrams', type=int, default=500, help="number of ngrams to use")
-    parser.add_argument('--n-estimators', type=int, default=500, help="number of estimators for the classifier")
-    parser.add_argument('--ngram-size', type=int, default=2, help="ngram size for the classifier")
-    parser.add_argument('--exp-name', type=str, default="default", help="name of the experiment")
-    parser.add_argument('--run-name', type=str, default=None, help="name of the run")
-
-    args = parser.parse_args()
-
-    return Args(**vars(args))
-
-
-def train_and_classify(train_data: list[str], targets: list, test_feats: list[str], top_k_ngrams=500, n_estimators=500, ngram_size=2):
-    # clf = RandomForestClassifier(n_estimators=500, random_state=42)
-    # clf = GradientBoostingClassifier(n_estimators=500, random_state=42)
-    clf = UrlClassifier(top_k_ngrams=top_k_ngrams, n_estimators=n_estimators, ngram_size=ngram_size)
-    clf.fit(train_data, targets)
-    return clf.predict(test_feats)
-
-
-@dataclass
-class EvaluateResult:
-    precision: float
-    recall: float
-    f1: float
-
-def evaluate(predictions, targets):
-    # evaluate based on precision, recall and fscore
-    precision = precision_score(targets, predictions, average='macro')
-    recall = recall_score(targets, predictions, average='macro')
-    f1 = f1_score(targets, predictions, average='macro')
-
-    return EvaluateResult(precision, recall, f1)
-
-def main(args: Args):
-
-    
-    mlflow.set_experiment(args.exp_name)
-
-    # set run name
-    if args.run_name is not None:
-        mlflow.set_tag("run_name", args.run_name)
-
-    # log args to mlflow
-    mlflow.log_params(vars(args))
-
-    data = pd.read_csv(args.datafile)
-    
-    if args.n_samples is not None:
-        data = data.sample(n=args.n_samples, random_state=42)
-
-    features_strs = data["url"].to_list()
-    labels = data["is_dutch"].to_list()
-
-    n_samples = len(features_strs)
-
-    urls_train, urls_test, labels_train, labels_test = train_test_split(features_strs, labels, test_size=0.2, random_state=42)
-
-    # train and classify
-    predictions = train_and_classify(
-        urls_train, 
-        labels_train, 
-        urls_test, 
-        top_k_ngrams=args.top_k_ngrams, 
-        n_estimators=args.n_estimators, 
-        ngram_size=args.ngram_size
-    )
-
-    # evaluate
-    evaluation = evaluate(predictions, labels_test)
-
-
-    # mlflow.log_figure(fig, "results_estimators.html")
-    for func in (mlflow.log_metric, print):
-        func("precision_all_feats", evaluation.precision)
-        func("recall_all_feats", evaluation.recall)
-        func("f1_all_feats", evaluation.f1)
-
-
-if __name__ == '__main__':
-    # import sys
-    # print(sys.argv)
-    # with mlflow.start_run(run_name="single"):
-    main(get_args())

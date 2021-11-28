@@ -9,8 +9,8 @@ ngram_sizes=(1 2 3 4 5)
 
 exp_name="$(date -Iseconds)"
 path_to_current_dir=$(dirname $(realpath $0))
-script_path=${path_to_current_dir}/url_classifier.py
-data_path=${path_to_current_dir}/../data/url_data_full.csv
+script_path=${path_to_current_dir}/train_classifier.py
+data_path=${path_to_current_dir}/url_data_full.csv
 
 mlflow experiments create -n $exp_name
 
