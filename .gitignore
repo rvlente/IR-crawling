@@ -4,3 +4,9 @@ __pycache__
 /rust_crawl/cache
 /rust_crawl/target.lock
 /Pipfile.lock
+/mlruns
+/.vscode
+/.idea
+/scripts
+/data
+/.pytest_cache
