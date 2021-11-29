@@ -2,30 +2,14 @@ import os
 from url_classifier import UrlClassifier
 
 import argparse
-from collections import defaultdict
 from dataclasses import dataclass
-from re import S
 from typing import Iterable, Optional
 from nltk.util import ngrams
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics import precision_score, recall_score, f1_score
-from sklearn.preprocessing import LabelEncoder
 import pandas as pd
-import nltk
 import mlflow
-from tqdm import tqdm
-import joblib
 import numpy as np
-from xgboost.sklearn import XGBClassifier
-import plotly.express as px
-import functools
-from scipy.sparse import csr_matrix
-from joblib import Parallel, delayed
-import time
-import multiprocessing
 from tempfile import TemporaryDirectory
 
 @dataclass
@@ -139,7 +123,7 @@ def main(args: Args):
             func("f1_all_feats", evaluation.f1)
 
     if args.save_file is not None:
-        joblib.dump(model, args.save_file)
+        model.save(args.save_file)
 
     with TemporaryDirectory() as tmpdir:
         p = os.path.join(tmpdir, "model.joblib")

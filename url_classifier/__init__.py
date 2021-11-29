@@ -1,1 +1,2 @@
 from .url_classifier import UrlClassifier
+from .rust_functions import predict_dutchiness_of_urls, mutate_state

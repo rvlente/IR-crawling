@@ -1,4 +1,4 @@
-from url_classifier import UrlClassifier
+from .url_classifier import UrlClassifier
 import pytest
 
 model_cache = dict()
@@ -14,6 +14,14 @@ def predict_dutchiness_of_urls(urls: list[str], path_to_model: str) -> list[floa
     return classifier.predict_dutchiness(urls)
 
 
+state = 0
+
+def mutate_state():
+    global state
+    state += 1
+    return state
+
+    
 def test_predict_dutchiness_of_urls():
     """
     Tests the predict_dutchiness_of_urls function.

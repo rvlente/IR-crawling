@@ -10,3 +10,6 @@ __pycache__
 /scripts
 /data
 /.pytest_cache
+/url_classifier/url_classifier.egg-info
+/url_classifier.egg-info
+/pyproject.toml

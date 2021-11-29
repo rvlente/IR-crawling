@@ -1,22 +1,19 @@
 #![feature(map_first_last)]
 
+mod crawler;
 mod prio_que;
 mod utils;
-mod crawler;
 
 use crawler::config::CollectTrainDataMode;
-use std::{path::{PathBuf} };
+use std::path::PathBuf;
 // use parking_lot::Mutex;
 use std::fmt::Debug;
 use structopt::StructOpt;
 use tokio::runtime::Builder;
 
-use crate::crawler::{Crawler, config::CrawlerConfig, state::CrawlerState};
+use crate::crawler::{config::CrawlerConfig, state::CrawlerState, Crawler};
 
-
-
-
-
+// const CLASSIFIER_CODE: &str = include_str!("../../classifier_for_rust.py");
 
 #[derive(Debug, StructOpt)]
 struct Opt {
@@ -120,3 +117,28 @@ fn check_mem() {
 //     eprintln!("Saving took: {}", passed.as_millis());
 //     // std::fs::write("cache/state.pkl", &state_ser).unwrap();
 // }
+
+#[test]
+fn test_pyo3() {
+    use pyo3::prelude::*;
+
+    eprintln!("PYTHON STATE TESTING:");
+    for _ in 0..5 {
+        Python::with_gil(|py| {
+            // Load directory module
+            // let module = PyModule::from
+
+            // let module = py.import("mlflow").unwrap();
+            let module = py.import("url_classifier").unwrap();
+            let fun = module.getattr("mutate_state").unwrap();
+            let result = fun.call0().unwrap();
+            eprintln!("{:#?}", result);
+        });
+    }
+
+    eprintln!("=====================")
+
+    // Python::with_gil(|py| {
+    //     let result = py.eval("url_classifier. predict_dutchiness_of_urls", None, None).unwrap();
+    // });
+}

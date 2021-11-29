@@ -18,6 +18,8 @@ mlflow = "1.21.0"
 xgboost = "1.5.1"
 plotly = "5.4.0"
 scikit-learn = "1.0.1"
+url_classifier = { path = ".", editable = true }
+numpy = "1.21.4"
 # scrapy = "*"
 # textblob = "*"
 # polyglot = "*"
@@ -33,6 +35,9 @@ scikit-learn = "1.0.1"
 # plotly = "*"
 jupyter = "*"
 # scikit-learn = "*"
+# numpy = "*"
+fastparquet = "*"
+pyarrow = "*"
 
 [dev-packages]
 
