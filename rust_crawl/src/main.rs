@@ -5,7 +5,7 @@ mod utils;
 mod crawler;
 
 use crawler::config::CollectTrainDataMode;
-use std::{path::{PathBuf}, sync::Arc};
+use std::{path::{PathBuf} };
 // use parking_lot::Mutex;
 use std::fmt::Debug;
 use structopt::StructOpt;
@@ -100,6 +100,7 @@ async fn test_get_ip_addr() {
 
 #[test]
 fn check_mem() {
+    use std::sync::Arc;
     let sz_string = std::mem::size_of::<String>();
     let sz_arc_string = std::mem::size_of::<Arc<str>>();
     eprintln!("Stringsz: {}, Arc sz: {}", sz_string, sz_arc_string);

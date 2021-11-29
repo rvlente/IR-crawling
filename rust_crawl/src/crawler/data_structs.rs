@@ -2,9 +2,14 @@ use std::{collections::HashSet, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::utils::AsRefStr;
 
-const CONTEXT_LEN: usize = 1000;
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+pub struct UrlData {
+    pub url: Arc<str>,
+    pub relative_url: Arc<str>,
+    pub text: Arc<str>,
+    pub parent_text: Arc<str>,
+}
 
 /// Extracted information from an html page
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -12,51 +17,46 @@ pub struct DocData {
     pub text: Arc<str>,
     pub url: Arc<str>,
     pub langs: HashSet<Arc<str>>,
-    pub links: HashSet<Arc<str>>,
+    pub urls: HashSet<UrlData>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TrainSample {
     pub url: Arc<str>,
     pub is_dutch: bool,
-    pub context: String,
-    #[serde(skip, default = "TrainSample::default_contents")]
-    pub contents: Arc<str>,
+    pub relative_url: Option<Arc<str>>,
+    pub text: Option<Arc<str>>,
+    pub parent_text: Option<Arc<str>>,
 }
 
 impl TrainSample {
-    fn default_contents() -> Arc<str> {
-        "".to_string().into()
-    }
 
-    pub fn new(doc_data: &DocData, parent_content: impl AsRefStr, is_dutch: bool) -> Self {
-        let parent_content = parent_content.as_ref_str();
-        let url_loc = parent_content.find(doc_data.url.as_ref_str());
+    pub fn new(
+        doc_data: &DocData,
+        url_data: impl Into<Option<UrlData>>,
+        is_dutch: bool,
+    ) -> Self {
+        // let url_loc = parent_content.find(doc_data.url.as_ref_str());
+        let url_data: Option<UrlData> = url_data.into();
 
-        let context = if let Some(url_loc) = url_loc {
-            let start = if url_loc > CONTEXT_LEN {
-                url_loc - CONTEXT_LEN
-            } else {
-                0
-            };
-
-            let end = if url_loc + CONTEXT_LEN < parent_content.len() {
-                url_loc + CONTEXT_LEN
-            } else {
-                parent_content.len()
-            };
-
-            parent_content.chars().take(end).skip(start).collect()
-        } else {
-            // std::process::exit(1);
-            "".to_string()
+        let (relative_url, text, parent_text) = match url_data {
+            Some(UrlData {
+                relative_url,
+                text,
+                parent_text,
+                ..
+            }) => (Some(relative_url), Some(text), Some(parent_text)),
+            None => (None, None, None),
         };
+
 
         Self {
             url: doc_data.url.clone(),
-            context,
             is_dutch,
-            contents: doc_data.text.clone(),
+            relative_url,
+            text,
+            parent_text,
         }
+
     }
 }

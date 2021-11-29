@@ -4,12 +4,11 @@ use dashmap::{DashMap, DashSet};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use static_init::dynamic;
-use anyhow::{anyhow, Result};
+use anyhow::{Result};
 use super::{data_structs::TrainSample};
 
 use crate::{prio_que::UrlPrioQue, utils::AsRefStr};
 
-use super::data_structs;
 use super::config::Paths;
 
 

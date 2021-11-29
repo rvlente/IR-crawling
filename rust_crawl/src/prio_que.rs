@@ -5,7 +5,6 @@ use std::{
     sync::Arc,
 };
 
-use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Default)]

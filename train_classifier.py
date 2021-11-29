@@ -1,3 +1,4 @@
+import os
 from url_classifier import UrlClassifier
 
 import argparse
@@ -25,7 +26,7 @@ from scipy.sparse import csr_matrix
 from joblib import Parallel, delayed
 import time
 import multiprocessing
-
+from tempfile import TemporaryDirectory
 
 @dataclass
 class Args:
@@ -139,6 +140,11 @@ def main(args: Args):
 
     if args.save_file is not None:
         joblib.dump(model, args.save_file)
+
+    with TemporaryDirectory() as tmpdir:
+        p = os.path.join(tmpdir, "model.joblib")
+        model.save(p)
+        mlflow.log_artifact(p)
 
 
 if __name__ == '__main__':

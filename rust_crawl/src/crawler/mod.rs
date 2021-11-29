@@ -1,28 +1,34 @@
-use std::{collections::HashSet, net::IpAddr, path::{Path, PathBuf}, str::FromStr, sync::{Arc, atomic::AtomicBool}, time::Duration};
 use anyhow::Result;
+use config::CollectTrainDataMode;
+use data_structs::{DocData, TrainSample};
+use parking_lot::MappedFairMutexGuard;
 use rand::Rng;
 use regex::Regex;
 use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
-use data_structs::{DocData, TrainSample};
-use config::{CollectTrainDataMode};
 use static_init::dynamic;
+use std::{
+    collections::HashSet,
+    net::IpAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
 
 use crossbeam::channel;
 
-use self::{config::CrawlerConfig, state::CrawlerState};
+use self::{config::CrawlerConfig, data_structs::UrlData, state::CrawlerState};
 
 pub mod config;
-pub mod state;
 pub mod data_structs;
-
+pub mod state;
 
 #[dynamic]
 static WEB_RE: Regex = Regex::new(r#"https?://([^/]*)/?.*"#).unwrap();
 
 #[dynamic]
 static DUTCH_URL: Regex = Regex::new(r#".*\Wnl\W.*"#).unwrap();
-
 
 /// Command type to control workers with
 enum WorkerCmd {
@@ -32,8 +38,6 @@ enum WorkerCmd {
 enum WorkerMsg {
     Stopped,
 }
-
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Crawler {
@@ -128,25 +132,25 @@ impl Crawler {
             CollectTrainDataMode::Full => {
                 let mut result = Vec::new();
 
-                for url in &parent_doc.links {
-                    let doc_data = self.get_doc_data(url.as_ref()).await?;
+                for url in &parent_doc.urls {
+                    let doc_data = self.get_doc_data(url.url.as_ref()).await?;
                     let is_dutch = self.is_dutch_doc(&doc_data);
 
                     if is_dutch {
-                        result.push(TrainSample::new(&doc_data, parent_doc.text.as_ref(), true));
+                        result.push(TrainSample::new(&doc_data, url.clone(), true));
                     } else if !doc_data.langs.is_empty() {
-                        result.push(TrainSample::new(&doc_data, parent_doc.text.as_ref(), false));
+                        result.push(TrainSample::new(&doc_data, url.clone(), false));
                     }
                 }
 
                 result
             }
             CollectTrainDataMode::LinksOnly => {
-                let is_dutch = self.is_dutch_doc(&parent_doc);
+                let is_dutch = self.is_dutch_doc(parent_doc);
                 if is_dutch {
-                    vec![TrainSample::new(&parent_doc, "", true)]
+                    vec![TrainSample::new(parent_doc, None, true)]
                 } else if parent_doc.langs.is_empty() {
-                    vec![TrainSample::new(&parent_doc, "", false)]
+                    vec![TrainSample::new(parent_doc, None, false)]
                 } else {
                     Vec::new()
                 }
@@ -161,6 +165,8 @@ impl Crawler {
     }
 
     async fn get_doc_data(&self, url: &str) -> Result<DocData> {
+        // <a> text; text from parent node;
+
         let txt = Self::make_request(url).await?;
         let doc = Document::from(txt.as_str());
         // let doc = Document::from_read(resp)?;
@@ -174,32 +180,48 @@ impl Crawler {
             .map(Arc::from)
             .collect();
 
-        let links: HashSet<Arc<str>> = doc
+        let links: HashSet<UrlData> = doc
             .find(Name("a"))
-            .filter_map(|n| n.attr("href"))
-            .map(ToOwned::to_owned)
-            .filter_map(|link| match url::Url::parse(&link) {
+            .filter_map(|n| {
+                let url_data = n
+                    .attr("href")
+                    .map(|rel_url| rel_url.to_owned())
+                    .map(|rel_url| {
+                        (
+                            rel_url,
+                            n.text(),
+                            n.parent().map(|p| p.text()).unwrap_or_default(),
+                        )
+                    });
+                url_data
+            })
+            .filter_map(|(link, txt, par_txt)| match url::Url::parse(&link) {
                 Ok(parsed) => {
                     if parsed.scheme().starts_with("http") {
-                        Some(link)
+                        Some((link.clone(), link, txt, par_txt))
                     } else {
                         None
                     }
                 }
                 Err(url::ParseError::RelativeUrlWithoutBase) => {
                     let url_parsed = url::Url::parse(url).ok()?;
-                    Some(url_parsed.join(&link).ok()?.to_string())
+                    Some((url_parsed.join(&link).ok()?.to_string(), link, txt, par_txt))
                 }
                 Err(_) => None,
             })
-            .filter(|u| url::Url::parse(u).is_ok())
-            .map(Arc::from)
+            .filter(|(url, ..)| url::Url::parse(url).is_ok())
+            .map(|(url, rel_url, txt, par_txt)| UrlData {
+                url: url.into(),
+                relative_url: rel_url.into(),
+                text: txt.into(),
+                parent_text: par_txt.into(),
+            })
             .collect();
 
         Ok(DocData {
             text,
             langs,
-            links,
+            urls: links,
             url: url.to_owned().into(),
         })
     }
@@ -231,11 +253,12 @@ impl Crawler {
             self.state.dutch_webpages.lock().push(doc_data.url);
 
             let filtered_urls: Vec<Arc<str>> = doc_data
-                .links
+                .urls
                 .iter()
+                .map(|url_data| url_data.url.clone())
                 // .map(|link| link.split('?').next().unwrap())
-                .filter(|&link| !self.state.history.contains(link))
-                .cloned()
+                .filter(|link| !self.state.history.contains(link))
+                // .map(|url|)
                 .collect();
 
             for url in filtered_urls.iter().cloned() {
