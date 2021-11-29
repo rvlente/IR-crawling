@@ -17,6 +17,7 @@ use std::{
 };
 
 use crossbeam::channel;
+use pyo3::{prelude::*, types::PyList};
 
 use self::{config::CrawlerConfig, data_structs::UrlData, state::CrawlerState};
 
@@ -29,6 +30,8 @@ static WEB_RE: Regex = Regex::new(r#"https?://([^/]*)/?.*"#).unwrap();
 
 #[dynamic]
 static DUTCH_URL: Regex = Regex::new(r#".*\Wnl\W.*"#).unwrap();
+
+const URL_CLASSIFIER_MODULE: &str = "url_classifier";
 
 /// Command type to control workers with
 enum WorkerCmd {
@@ -55,16 +58,52 @@ impl Crawler {
     fn new(
         start_urls: impl IntoIterator<Item = Arc<str>>,
         save_file: impl Into<Option<PathBuf>>,
+        classifier_file: impl Into<Option<PathBuf>>,
         collect_train_data: CollectTrainDataMode,
     ) -> Self {
         Self {
             state: CrawlerState::new(start_urls),
             cfg: CrawlerConfig {
                 save_file: save_file.into(),
+                classifier_file: classifier_file.into(),
                 collect_train_data,
                 save_every: 10,
             },
         }
+    }
+
+    async fn predict_dutchiness_of_urls<'a>(
+        &self,
+        urls: impl IntoIterator<Item = &'a Arc<str>>,
+    ) -> Result<Vec<f32>> {
+        let classifier_file = match self.cfg.classifier_file {
+            Some(ref classifier_file) => classifier_file.clone(),
+            None => return Err(anyhow::anyhow!("No classifier file specified")),
+        };
+
+
+        let urls: Vec<_> = urls.into_iter().map(|u| u.clone()).collect();
+
+        if urls.len() == 0 {
+            return Ok(Vec::new());
+        }
+
+        // let result = tokio::task::spawn_blocking(|| -> Result<Vec<f32>> {
+            let gil = Python::acquire_gil();
+            let py = gil.python();
+
+            let urls: Vec<_> = urls.into_iter().map(|u| u.to_string()).collect();
+
+            let module = py.import(URL_CLASSIFIER_MODULE)?;
+            let predict_dutchiness = module.getattr("predict_dutchiness_of_urls")?;
+
+            let result = predict_dutchiness.call1((urls, classifier_file))?;
+            let result: Result<Vec<f32>> = Ok(result.extract()?);
+            // result
+        // })
+        // .await?;
+
+        result
     }
 
     fn is_dutch_url(&self, url: &str) -> bool {
@@ -265,14 +304,21 @@ impl Crawler {
                 self.state.history.insert(url);
             }
 
-            let mut rng = rand::thread_rng();
+            let dutchiness = if let Some(_) = self.cfg.classifier_file {
+                self.predict_dutchiness_of_urls(&filtered_urls).await.unwrap()
+            } else {
+                let mut rng = rand::thread_rng();
+                (0..filtered_urls.len()).map(|_| rng.gen()).collect()
+            };
 
             let extension: Vec<_> = filtered_urls
                 .into_iter()
-                .map(|u| {
+                .zip(dutchiness)
+                .map(|(u, d)| {
                     let hc = self.get_host_count(&u);
                     self.increment_host_count(u.clone());
-                    (hc, rng.gen(), u)
+                    // eprintln!("{:?} {:?}", u, d);
+                    (hc, d, u)
                 })
                 .collect();
 
@@ -405,6 +451,8 @@ impl Crawler {
                 }
             };
 
+            let mut prev_len = self.state.history.len();
+
             loop {
                 lc += 1;
                 std::thread::sleep(Duration::from_secs(30));
@@ -440,10 +488,13 @@ impl Crawler {
                     break;
                 }
 
+                let new_len = self.state.history.len();
                 eprintln!(
-                    "Dutch sites found: {}",
-                    self.state.dutch_webpages.lock().len()
+                    "Dutch sites found: {}, Total urls found since last report: {}",
+                    self.state.dutch_webpages.lock().len(),
+                    new_len - prev_len
                 );
+                prev_len = new_len;
             }
         });
     }

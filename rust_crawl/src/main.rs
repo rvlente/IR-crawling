@@ -7,6 +7,7 @@ mod utils;
 use crawler::config::CollectTrainDataMode;
 use std::path::PathBuf;
 // use parking_lot::Mutex;
+use pyo3::prelude::*;
 use std::fmt::Debug;
 use structopt::StructOpt;
 use tokio::runtime::Builder;
@@ -19,6 +20,12 @@ use crate::crawler::{config::CrawlerConfig, state::CrawlerState, Crawler};
 struct Opt {
     #[structopt(short, long, help = "File to load and store state from/to")]
     save_file: Option<PathBuf>,
+    #[structopt(
+        short,
+        long,
+        help = "Optional file to load a classifier from. If not provided, queue priority is random."
+    )]
+    classifier_file: Option<PathBuf>,
     #[structopt(long, help = "amount of simultaneous workers", default_value = "128")]
     num_workers: usize,
     // #[structopt(short, long, help = "Crawler configuration file")]
@@ -59,9 +66,18 @@ fn main() {
 
     let crawler_cfg = CrawlerConfig {
         save_file: opt.save_file.clone(),
+        classifier_file: opt.classifier_file.clone(),
         collect_train_data: opt.collect_train_data,
         save_every: opt.save_every,
     };
+
+    if let Some(_) = opt.classifier_file {
+
+        Python::with_gil(|py| {
+            let module = py.import("url_classifier").expect("Could not import python url_classifier, make sure this program is ran in a virtual environment, where the module is installed");
+            let _ = module.getattr("predict_dutchiness_of_urls").expect("Could not find prediction function, make sure the correct package is installed");
+        });
+    }
 
     let crawler = Crawler::from((crawler_state, crawler_cfg));
 
@@ -141,4 +157,26 @@ fn test_pyo3() {
     // Python::with_gil(|py| {
     //     let result = py.eval("url_classifier. predict_dutchiness_of_urls", None, None).unwrap();
     // });
+}
+
+#[test]
+fn test_pyo3_multithread() {
+    use pyo3::prelude::*;
+
+    let mut threads = Vec::new();
+    for _ in 0..5 {
+        let t = std::thread::spawn(|| {
+            Python::with_gil(|py| {
+                let module = py.import("url_classifier").unwrap();
+                let fun = module.getattr("mutate_state").unwrap();
+                let result = fun.call0().unwrap();
+                eprintln!("{:#?}", result);
+            });
+        });
+        threads.push(t);
+    }
+    for t in threads {
+        t.join().unwrap();
+    }
+    
 }

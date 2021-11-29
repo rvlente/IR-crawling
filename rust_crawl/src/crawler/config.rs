@@ -29,6 +29,7 @@ impl FromStr for CollectTrainDataMode {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct CrawlerConfig {
     pub save_file: Option<PathBuf>,
+    pub classifier_file: Option<PathBuf>,
     pub collect_train_data: CollectTrainDataMode,
     pub save_every: usize,
 }

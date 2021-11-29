@@ -104,7 +104,7 @@ class UrlClassifier:
         return self._label_encoder.inverse_transform(self._classif.predict(self._extract_features(urls)))
 
     def predict_proba(self, urls: list[str]) -> np.ndarray:
-        return self._classif.predict_proba(self._extract_features(urls))
+        return self._classif.predict_proba(self._extract_features(urls, parallel_feature_extraction=False))
     
     def predict_dutchiness(self, urls: list[str]) -> np.ndarray:
         return self.predict_proba(urls)[:,1]

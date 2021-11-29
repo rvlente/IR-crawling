@@ -8,6 +8,9 @@ def predict_dutchiness_of_urls(urls: list[str], path_to_model: str) -> list[floa
     """
     Classifies the urls and returns the classification results.
     """
+    if len(urls) == 0:
+        return []
+
     global model_cache
     classifier = model_cache.get(path_to_model, UrlClassifier.load(path_to_model))
 

@@ -10,18 +10,18 @@ from tqdm import tqdm
 class Args:
     input: str
     output: str
-    debug_mode: bool
+    validate_result: bool
 
 def get_args():
     parser = argparse.ArgumentParser(description='Make csv dataset')
     parser.add_argument('-i', '--input', type=str, required=True, help='jsonl input file')
     parser.add_argument('-o', '--output', type=str, required=True, help='output file')
-    parser.add_argument('--debug-mode', action='store_true', help='debug mode')
+    parser.add_argument('--validate-result', action='store_true', help='validate the output file')
 
     args = Args(**vars(parser.parse_args()))
     return args
 
-def main(args):
+def main(args: Args):
     # read the input
     data = defaultdict(list)
     with open(args.input, 'r') as f:
@@ -31,7 +31,7 @@ def main(args):
                 entry = json.loads(line)
             except json.decoder.JSONDecodeError:
                 entry = {}
-                pass
+            
             for k, v in entry.items():
                 # if isinstance(v, str):
                 #     # remove invalid utf-8 characters
@@ -48,10 +48,10 @@ def main(args):
     df = df.drop_duplicates(subset='url')
 
     # write the output
-    # df.to_csv(args.output, index=False)
+    # df.to_csv(f"{args.output}.csv", index=False)
     df.to_parquet(args.output, index=False)
 
-    if args.debug_mode:
+    if args.validate_result:
         
         # saved_df = pd.read_csv(args.output)
         saved_df = pd.read_parquet(args.output)
@@ -60,10 +60,8 @@ def main(args):
         df = df.fillna('')
         saved_df = saved_df.fillna('')
 
-        # assert df.equals(saved_df)
-
         # zip over rows
-        for row_df, row_saved_df in tqdm(zip(df.iterrows(), saved_df.iterrows()), total=len(df)):
+        for row_df, row_saved_df in tqdm(zip(df.iterrows(), saved_df.iterrows()), total=len(df), desc='Validating output file'):
             # zip over columns
             for col_df, col_saved_df in zip(row_df[1].iteritems(), row_saved_df[1].iteritems()):
                 assert col_df[1] == col_saved_df[1], f'{col_df} != {col_saved_df}'
