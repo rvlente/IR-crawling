@@ -25,6 +25,7 @@ class Args:
     no_evaluate: bool
     save_file: Optional[str]
     classifier_type: str
+    no_gpu: bool
 
 def get_args() -> Args:
     parser = argparse.ArgumentParser()
@@ -38,6 +39,7 @@ def get_args() -> Args:
     parser.add_argument('--run-name', type=str, default=None, help="name of the run")
     parser.add_argument('--no-evaluate', action='store_true', help="don't evaluate the model")
     parser.add_argument('--save-file', type=str, default=None, help="file to save the model to")
+    parser.add_argument('--no-gpu', action='store_true', help="don't use gpu")
 
     args = parser.parse_args()
 
@@ -52,10 +54,11 @@ def train_and_classify(
         n_estimators=500, 
         ngram_size=2,
         clf_type="gradient_boosting",
+        use_gpu=True,
     ) -> tuple[np.ndarray, UrlClassifier]:
     # clf = RandomForestClassifier(n_estimators=500, random_state=42)
     # clf = GradientBoostingClassifier(n_estimators=500, random_state=42)
-    clf = UrlClassifier(top_k_ngrams=top_k_ngrams, n_estimators=n_estimators, ngram_size=ngram_size, classifier_type=clf_type)
+    clf = UrlClassifier(top_k_ngrams=top_k_ngrams, n_estimators=n_estimators, ngram_size=ngram_size, classifier_type=clf_type, use_gpu=use_gpu)
     clf.fit(train_data, targets)
     return clf.predict(test_feats), clf
 
@@ -110,6 +113,7 @@ def main(args: Args):
         n_estimators=args.n_estimators, 
         ngram_size=args.ngram_size,
         clf_type=args.classifier_type,
+        use_gpu=not args.no_gpu,
     )
 
     # evaluate

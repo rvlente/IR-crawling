@@ -42,6 +42,15 @@ enum WorkerMsg {
     Stopped,
 }
 
+enum PythonWorkerCmd {
+    ProcessUrl(Vec<Arc<str>>),
+    Stop,
+}
+
+enum PythonWorkerMsg {
+    Stopped,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Crawler {
     pub(crate) state: CrawlerState,
@@ -72,6 +81,14 @@ impl Crawler {
         }
     }
 
+    async fn python_worker(
+        &self,
+        cmd_recv: channel::Receiver<PythonWorkerCmd>,
+        msg_send: channel::Sender<PythonWorkerMsg>,
+    ) {
+
+    }
+
     async fn predict_dutchiness_of_urls<'a>(
         &self,
         urls: impl IntoIterator<Item = &'a Arc<str>>,
@@ -88,7 +105,7 @@ impl Crawler {
             return Ok(Vec::new());
         }
 
-        // let result = tokio::task::spawn_blocking(|| -> Result<Vec<f32>> {
+        let result = tokio::task::spawn_blocking(|| -> Result<Vec<f32>> {
             let gil = Python::acquire_gil();
             let py = gil.python();
 
@@ -99,9 +116,9 @@ impl Crawler {
 
             let result = predict_dutchiness.call1((urls, classifier_file))?;
             let result: Result<Vec<f32>> = Ok(result.extract()?);
-            // result
-        // })
-        // .await?;
+            result
+        })
+        .await?;
 
         result
     }

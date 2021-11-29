@@ -30,7 +30,7 @@ memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
 
 class UrlClassifier:
 
-    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting") -> None:
+    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", use_gpu=True) -> None:
         """
         :param ngram_size: The size of the ngrams to use
         :param top_k_ngrams: The number of ngrams to use
@@ -43,7 +43,8 @@ class UrlClassifier:
         self._top_k_grams: Optional[list[tuple]] = None
 
         if classifier_type == "gradient_boosting":
-            self._classif: XGBClassifier = XGBClassifier(n_estimators=n_estimators, use_label_encoder=False, tree_method='gpu_hist', verbosity=0)
+            tree_method = "gpu_hist" if use_gpu else "hist"
+            self._classif: XGBClassifier = XGBClassifier(n_estimators=n_estimators, use_label_encoder=False, tree_method=tree_method, verbosity=0)
         elif classifier_type == "SVM":
             self._classif: SVC = SVC(gamma='auto', kernel='linear', probability=True)
         self._label_encoder = LabelEncoder()
