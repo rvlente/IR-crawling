@@ -50,15 +50,16 @@ def main():
     X_train, X_test, y_train, y_test = load_dataset(
         take=10_000, split=0.1, feature_extractor=_extract_trigram_features)
 
-    cu_time = time.time()
+
     # clf = SVC(kernel='linear')
     clf = LinearSVC()
     clf = clf.fit(X_train, y_train)
     # Optional to get values faster but without probabilities?
     # print(np.sort(np.array(clf.coef_)))
 
+    cu_time = time.time()
     y_pred = clf.predict(X_test)
-    print("Time: ", time.time()-cu_time)
+    print("Time: ", time.time() - cu_time)
 
     # Print metrics
     print('Precision:', precision_score(y_test, y_pred, pos_label=True))
@@ -101,8 +102,8 @@ def load_dataset_only(take=None):
 def getBestFeaturesNaive():
     urls, labels = load_dataset_only(10_000)
 
-    vectorizer = CountVectorizer(ngram_range=(3,3), analyzer='char').fit(urls)
-    # vectorizer = CountVectorizer(analyzer=_extract_word_features).fit(urls)
+    # vectorizer = CountVectorizer(ngram_range=(3,3), analyzer='char').fit(urls)
+    vectorizer = CountVectorizer(analyzer=_extract_word_features).fit(urls)
     featurized_data = vectorizer.transform(urls)
     vocabulary = vectorizer.vocabulary_
 
@@ -121,7 +122,8 @@ def getBestFeaturesNaive():
 
     dutchest_features = np.array(feature_list[:100], dtype=object)
     undutchest_features = np.array(sorted(feature_list[len(feature_list)-100:], key=lambda x: (x[1][1] + 1)/(x[1][0] + 1)), dtype=object)
-
+    print(dutchest_features)
+    print(undutchest_features)
     counts = dutchest_features.tolist() + undutchest_features.tolist()
 
     keys = dutchest_features[:, 0].tolist() + undutchest_features[:, 0].tolist()
@@ -137,6 +139,55 @@ def testBestFeatures():
     print(dictionary)
     print("Time: ", time.time() - cu_time)
 
+class ContextModel:
+    def __init__(self):
+        import spacy
+        from spacy.language import Language
+        from spacy_langdetect import LanguageDetector
+
+        def get_lang_detector(nlp, name):
+            return LanguageDetector()
+
+        nlp = spacy.load("nl_core_news_lg", disable=["tagger", "morphologizer", "attribute_ruler", "ner", "tok2vec"])
+        Language.factory("language_detector", func=get_lang_detector)
+        nlp.add_pipe('language_detector', last=True)
+
+        self.nlp = nlp
+        print(nlp.pipeline)
+
+    def predict(self, contexts):
+        predictions = []
+        for context in contexts:
+            doc = self.nlp(context)
+            predictions.append(doc._.language)
+        return predictions
+
+    @staticmethod
+    def test():
+        # urls, labels = load_dataset_only(10_000)
+        urls, labels = load_dataset_only(100)
+        # Load and split dataset
+        X_train, X_test, y_train, y_test = train_test_split(urls, labels, shuffle=True, train_size=0.1)
+
+        cntxt = ContextModel()
+        cu_time = time.time()
+        y_pred2 = cntxt.predict(X_test)
+        print("Time: ", time.time() - cu_time)
+
+        # Print metrics
+        error = 0
+        for test, pred in zip(y_test, y_pred2):
+            error += abs(test*1 - (pred["language"]=='nl')*pred["score"])
+        print(error/len(y_pred2))
+        print(cntxt.predict(['Dit is nederlands. Het is een mooie taal.']))
+
+        predictions = []
+        for test, pred in zip(y_test, y_pred2):
+            predictions.append(((pred["language"]=='nl')*pred["score"]))
+
+        print('Precision:', precision_score(y_test, predictions, pos_label=True))
+        print('Recall:', recall_score(y_test, predictions, pos_label=True))
+        print('F-score:', f1_score(y_test, predictions, pos_label=True))
 
 if __name__ == '__main__':
-    testBestFeatures()
+    ContextModel.test()
