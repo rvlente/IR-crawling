@@ -19,7 +19,7 @@ use crate::crawler::{config::CrawlerConfig, state::CrawlerState, Crawler};
 #[derive(Debug, StructOpt)]
 struct Opt {
     #[structopt(short, long, help = "File to load and store state from/to")]
-    save_file: Option<PathBuf>,
+    save_dir: Option<PathBuf>,
     #[structopt(
         short,
         long,
@@ -42,6 +42,10 @@ struct Opt {
 
     #[structopt(long, help = "Save every n loops", default_value = "10")]
     save_every: usize,
+
+    // Do not worry @wikipedia, only a few articles from the seed will be downloaded, before moving on to new domains.
+    #[structopt(long, help = "Seeds: URLs to start crawling from, only used if save_dir is not provided", default_value = "https://nl.wikipedia.org")]
+    seeds: Vec<String>,
 }
 
 fn main() {
@@ -49,7 +53,7 @@ fn main() {
     let opt = Opt::from_args();
 
     let mut crawler_state: CrawlerState = opt
-        .save_file
+        .save_dir
         .clone()
         .and_then(|p| CrawlerState::load_from_dir(p).ok())
         // .and_then(|state_str| {
@@ -61,14 +65,18 @@ fn main() {
         //         .ok()
         // })
         .unwrap_or_else(|| {
-            // panic!("WTF");
-            CrawlerState::new(["https://www.wikipedia.nl/".to_string().into()])
+
+            if opt.seeds.is_empty() {
+                panic!("No seeds nor save file provided");
+            }
+
+            CrawlerState::new(opt.seeds.iter().cloned().map(Into::into))
         });
 
     crawler_state.drain_being_processed();
 
     let crawler_cfg = CrawlerConfig {
-        save_file: opt.save_file.clone(),
+        save_file: opt.save_dir.clone(),
         classifier_file: opt.classifier_file.clone(),
         collect_train_data: opt.collect_train_data,
         context_size: opt.context_size,
