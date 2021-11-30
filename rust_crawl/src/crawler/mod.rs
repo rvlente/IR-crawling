@@ -68,6 +68,7 @@ impl Crawler {
         start_urls: impl IntoIterator<Item = Arc<str>>,
         save_file: impl Into<Option<PathBuf>>,
         classifier_file: impl Into<Option<PathBuf>>,
+        context_size: usize,
         collect_train_data: CollectTrainDataMode,
     ) -> Self {
         Self {
@@ -76,6 +77,7 @@ impl Crawler {
                 save_file: save_file.into(),
                 classifier_file: classifier_file.into(),
                 collect_train_data,
+                context_size,
                 save_every: 10,
             },
         }
@@ -86,7 +88,6 @@ impl Crawler {
         cmd_recv: channel::Receiver<PythonWorkerCmd>,
         msg_send: channel::Sender<PythonWorkerMsg>,
     ) {
-
     }
 
     async fn predict_dutchiness_of_urls<'a>(
@@ -97,7 +98,6 @@ impl Crawler {
             Some(ref classifier_file) => classifier_file.clone(),
             None => return Err(anyhow::anyhow!("No classifier file specified")),
         };
-
 
         let urls: Vec<_> = urls.into_iter().map(|u| u.clone()).collect();
 
@@ -220,6 +220,38 @@ impl Crawler {
         Ok(())
     }
 
+    fn get_context_(context_size: usize, parent_txt: &str, url_txt: &str, rel_url: &str) -> Option<String> {
+        // self.state.contexts.get(url)
+
+        let to_look_for = if url_txt.is_empty() {
+            rel_url
+        } else {
+            url_txt
+        };
+
+        let pos = parent_txt.find(to_look_for)?;
+
+        // let context_size = self.cfg.context_size;
+
+        let start = if pos > context_size {
+            pos - context_size
+        } else {
+            0
+        };
+
+        let stop = if pos + context_size < parent_txt.len() {
+            pos + context_size
+        } else {
+            parent_txt.len()
+        };
+
+        Some(parent_txt.chars().take(stop).skip(start).collect())
+    }
+
+    fn get_context(&self , parent_txt: &str, url_txt: &str, rel_url: &str) -> Option<String> {
+        Self::get_context_(self.cfg.context_size, parent_txt, url_txt, rel_url)
+    }
+
     async fn get_doc_data(&self, url: &str) -> Result<DocData> {
         // <a> text; text from parent node;
 
@@ -243,10 +275,13 @@ impl Crawler {
                     .attr("href")
                     .map(|rel_url| rel_url.to_owned())
                     .map(|rel_url| {
+                        // eprintln!("{:?}", n.text());
+                        let rel_url: Arc<str> = rel_url.into();
+                        let url_txt: Arc<str> = n.text().into();
                         (
-                            rel_url,
-                            n.text(),
-                            n.parent().map(|p| p.text()).unwrap_or_default(),
+                            rel_url.clone(),
+                            url_txt.clone(),
+                            n.parent().and_then(|p| self.get_context(&p.text(), url_txt.as_ref(), rel_url.as_ref())).unwrap_or_default(),
                         )
                     });
                 url_data
@@ -261,21 +296,25 @@ impl Crawler {
                 }
                 Err(url::ParseError::RelativeUrlWithoutBase) => {
                     let url_parsed = url::Url::parse(url).ok()?;
-                    Some((url_parsed.join(&link).ok()?.to_string(), link, txt, par_txt))
+                    Some((url_parsed.join(link.as_ref()).ok()?.to_string().into(), link, txt, par_txt))
                 }
                 Err(_) => None,
             })
             .filter(|(url, ..)| url::Url::parse(url).is_ok())
             .map(|(url, rel_url, txt, par_txt)| UrlData {
-                url: url.into(),
-                relative_url: rel_url.into(),
+                url: url,
+                relative_url: rel_url,
                 text: txt.into(),
-                parent_text: par_txt.into(),
+                url_context: par_txt.into(),
+                // url: url.into(),
+                // relative_url: String::new().into(),
+                // text: String::new().into(),
+                // parent_text: String::new().into(),
             })
             .collect();
 
         Ok(DocData {
-            text,
+            text: "".to_string().into(),
             langs,
             urls: links,
             url: url.to_owned().into(),
@@ -322,7 +361,9 @@ impl Crawler {
             }
 
             let dutchiness = if let Some(_) = self.cfg.classifier_file {
-                self.predict_dutchiness_of_urls(&filtered_urls).await.unwrap()
+                self.predict_dutchiness_of_urls(&filtered_urls)
+                    .await
+                    .unwrap()
             } else {
                 let mut rng = rand::thread_rng();
                 (0..filtered_urls.len()).map(|_| rng.gen()).collect()

@@ -37,6 +37,9 @@ struct Opt {
     )]
     collect_train_data: CollectTrainDataMode,
 
+    #[structopt(long, help = "Amount of characters to take as context around the urls", default_value = "250")]
+    context_size: usize,
+
     #[structopt(long, help = "Save every n loops", default_value = "10")]
     save_every: usize,
 }
@@ -68,6 +71,7 @@ fn main() {
         save_file: opt.save_file.clone(),
         classifier_file: opt.classifier_file.clone(),
         collect_train_data: opt.collect_train_data,
+        context_size: opt.context_size,
         save_every: opt.save_every,
     };
 

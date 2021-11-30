@@ -8,7 +8,7 @@ pub struct UrlData {
     pub url: Arc<str>,
     pub relative_url: Arc<str>,
     pub text: Arc<str>,
-    pub parent_text: Arc<str>,
+    pub url_context: Arc<str>,
 }
 
 /// Extracted information from an html page
@@ -25,8 +25,8 @@ pub struct TrainSample {
     pub url: Arc<str>,
     pub is_dutch: bool,
     pub relative_url: Option<Arc<str>>,
-    pub text: Option<Arc<str>>,
-    pub parent_text: Option<Arc<str>>,
+    pub url_text: Option<Arc<str>>,
+    pub url_context: Option<Arc<str>>,
 }
 
 impl TrainSample {
@@ -43,7 +43,7 @@ impl TrainSample {
             Some(UrlData {
                 relative_url,
                 text,
-                parent_text,
+                url_context: parent_text,
                 ..
             }) => (Some(relative_url), Some(text), Some(parent_text)),
             None => (None, None, None),
@@ -54,8 +54,8 @@ impl TrainSample {
             url: doc_data.url.clone(),
             is_dutch,
             relative_url,
-            text,
-            parent_text,
+            url_text: text,
+            url_context: parent_text,
         }
 
     }

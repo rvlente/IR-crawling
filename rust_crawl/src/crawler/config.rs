@@ -30,6 +30,7 @@ impl FromStr for CollectTrainDataMode {
 pub struct CrawlerConfig {
     pub save_file: Option<PathBuf>,
     pub classifier_file: Option<PathBuf>,
+    pub context_size: usize,
     pub collect_train_data: CollectTrainDataMode,
     pub save_every: usize,
 }

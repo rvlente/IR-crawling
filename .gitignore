@@ -13,3 +13,4 @@ __pycache__
 /url_classifier/url_classifier.egg-info
 /url_classifier.egg-info
 /pyproject.toml
+/build
