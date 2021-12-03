@@ -33,19 +33,19 @@ def main(args: Args):
                 entry = {}
             
             for k, v in entry.items():
-                # if isinstance(v, str):
-                #     # remove invalid utf-8 characters
-                #     v = v.encode('utf-8', errors='ignore').decode('utf-8')
-                # if isinstance(v, bool):
-                #     v = 1 if v else 0
                 data[k].append(v)
-
-    
+                data[f"empty_{k}"].append("")
+            
 
     df = pd.DataFrame.from_dict(data)
 
     # drop duplicates of the 'url' field
     df = df.drop_duplicates(subset='url')
+
+    # drop all columns which contain only empty strings
+    # empty_string_cols = df.columns[ic(df.apply(lambda x: x == "", axis=1)).all()]
+    # print(empty_string_cols)
+    # assert False
 
     # write the output
     # df.to_csv(f"{args.output}.csv", index=False)

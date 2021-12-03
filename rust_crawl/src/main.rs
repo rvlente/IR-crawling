@@ -96,7 +96,7 @@ fn main() {
     let runtime = Builder::new_multi_thread()
         .max_blocking_threads(opt.num_workers)
         // 10 mb
-        .thread_stack_size(10 * 1000 * 1024)
+        .thread_stack_size(50 * 1000 * 1024)
         .enable_all()
         .build()
         .unwrap();
