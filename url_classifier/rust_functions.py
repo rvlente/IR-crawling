@@ -39,5 +39,3 @@ def test_predict_dutchiness_of_urls():
 
         if results[0] > results[1] or results[0] > results[2]:
             print("Unexpected predictions")
-            
-    print("Finished")
