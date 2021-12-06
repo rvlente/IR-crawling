@@ -59,7 +59,7 @@ class Extract_top_k_grams_size_n():
 
         return result
 
-class Extract_ngrams_size_many():
+class Extract_top_k_grams_size_many():
     def __init__(self, n, k):
         self.prepared = False
         self._n = n
@@ -70,7 +70,7 @@ class Extract_ngrams_size_many():
         for n in self._n:
             extractor = Extract_top_k_grams_size_n(n, self._k)
             extractor.prepare(train_urls)
-            top_k_grams_extractors.append(top_k_grams_extractors)
+            top_k_grams_extractors.append(extractor)
         self._top_k_grams_extractors = top_k_grams_extractors
 
     def extract_features(self, urls: Iterable[str], parallel_feature_extraction=True):
@@ -81,4 +81,4 @@ class Extract_ngrams_size_many():
         for extractor in self._top_k_grams_extractors:
             results.extend(extractor.extract_features(urls, parallel_feature_extraction))
 
-        return result
+        return results

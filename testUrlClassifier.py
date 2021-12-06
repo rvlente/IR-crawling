@@ -1,3 +1,3 @@
 from url_classifier import rust_functions
 
-rust_functions.test_predict_dutchiness_of_urls()
+rust_functions.test_all_models()

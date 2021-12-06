@@ -8,9 +8,11 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.metrics import precision_score, recall_score, f1_score
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, roc_curve
 from sklearn.svm import SVC, LinearSVC
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.preprocessing import LabelEncoder
+import sklearn
 import pandas as pd
 import nltk
 import mlflow
@@ -24,12 +26,15 @@ from scipy.sparse import csr_matrix
 from joblib import Parallel, delayed
 import time
 import multiprocessing
-from .feature_extractors import Extract_top_k_grams_size_n, Extract_ngrams_size_many
+from .feature_extractors import Extract_top_k_grams_size_n, Extract_top_k_grams_size_many
 import csv
 import itertools
 
 
 memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
+
+classifier_types = ["gradient_boosting", "SVM", "ProbaLinearSVC"]
+feature_types = ["top_k_ngrams_size_n", "top_k_ngrams_size_many"]
 
 class UrlClassifier:
 
@@ -48,6 +53,8 @@ class UrlClassifier:
         self._k= top_k_ngrams
 
         self._top_k_grams: Optional[list[tuple]] = None
+        self.classifier_type = classifier_type
+        self.feature_type = feature_type
 
         if classifier_type == "gradient_boosting":
             tree_method = "gpu_hist" if use_gpu else "hist"
@@ -55,13 +62,13 @@ class UrlClassifier:
         elif classifier_type == "SVM":
             self._classif: SVC = SVC(gamma='auto', kernel='linear', probability=True)
         elif classifier_type == "ProbaLinearSVC":
-            self._classif: CalibratedClassifierCV = CalibratedClassifierCV(LinearSVC())
+            self._classif: CalibratedClassifierCV = CalibratedClassifierCV(LinearSVC(max_iter=10000))
 
         if feature_type == "top_k_ngrams_size_n":
             self._n = self._n[0]
             self._ft_extractor: Extract_top_k_grams_size_n = Extract_top_k_grams_size_n(self._n, self._k)
-        elif feature_type == "ngrams_size_many":
-            self._ft_extractor: Extract_n_grams_size_all = Extract_n_grams_size_all(self._n, self._k)
+        elif feature_type == "top_k_ngrams_size_many":
+            self._ft_extractor: Extract_top_k_grams_size_many = Extract_top_k_grams_size_many(self._n, self._k)
 
         self._label_encoder = LabelEncoder()
 
@@ -105,11 +112,11 @@ class UrlClassifier:
     def fit(self, train_urls: list[str]=None, train_labels: list=None, parallel_feature_extraction=True, dataPath=None) -> 'UrlClassifier':
         # self._extract_top_k_grams(train_urls)
         # train_features = self._extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
-        if train_urls is None and train_labels is None and dataPath is none:
+        if train_urls is None and train_labels is None and dataPath is None:
             raise ValueError("No data is given. Specify either train_urls and train_labels or provide a path name")
-        if train_urs is not None and train_labels is not None and dataPath is not None:
+        if train_urls is not None and train_labels is not None and dataPath is not None:
             raise ValueError("Both (train_urls, train_labels) and path name are specified. Please specify only one to avoid ambiguity")
-        
+
         if dataPath is not None:
             train_urls, train_labels = self.loadData(dataPath)
         self._ft_extractor.prepare(train_urls)
@@ -138,46 +145,58 @@ class UrlClassifier:
         return self.predict_proba(urls)[:,1]
     
     def save(self, path: str) -> None:
-        joblib.dump(self, path)
+        joblib.dump(self, path + " " + self.classifier_type + " " + self.feature_type)
 
     @classmethod
     def load(cls, path: str) -> 'UrlClassifier':
         return joblib.load(path)
 
-    def test(self, dataPath='url_data_with_context.parquet'):
+    def test(self, dataPath, split=0.9, take=None):
         # Load data
-        with open(dataPath) as csvfile:
-            reader = csv.reader(csvfile, delimiter=',')
-            next(reader)  # Skip header.
-
-            urls = []
-            labels = []
-
-            for url, is_dutch, relative_url, text, parent_text in itertools.islice(reader, take):
-                urls.append(url)
-                labels.append(is_dutch == 'True')
-
-        # Embed data
-        vectorizer = CountVectorizer(analyzer=feature_extractor)
-        features = vectorizer.fit_transform(urls)
+        urls, labels = self.loadData(dataPath, take)
 
         # Split in train and test sets
-        X_train, X_test, y_train, y_test = train_test_split(features, labels, shuffle=True, train_size=split)
+        X_train, X_test, y_train, y_test = train_test_split(urls, labels, shuffle=True, train_size=split)
 
-        # Test runtime
+        # Test for training time
+        cu_time = time.time()
+        self.fit(X_train, y_train)
+        seconds = time.time() - cu_time
+        seconds_per_hundred_thousand_training_samples = seconds * (100000/len(X_train))
+
+        # Test prediction time
         cu_time = time.time()
         y_pred = self.predict(X_test)
-        print("Time: ", time.time() - cu_time)
+        seconds = time.time() - cu_time
+        seconds_per_hundred_thousand_predictions = seconds * (100000/len(X_test))
 
         # Print metrics
-        print('Precision:', precision_score(y_test, y_pred, pos_label=True))
-        print('Recall:', recall_score(y_test, y_pred, pos_label=True))
-        print('F-score:', f1_score(y_test, y_pred, pos_label=True))
+        precision = precision_score(y_test, y_pred, pos_label=True)
+        recall = recall_score(y_test, y_pred, pos_label=True)
+        fscore = f1_score(y_test, y_pred, pos_label=True)
 
-    def loadData(self, dataPath='url_data_with_context.parquet', take=None):
+        # auc = roc_auc_score(y_test, y_pred, average=None)
+        # fpr, tpr, thresholds = roc_curve(y_test, y_pred)
+
+        precision = precision.item()
+        recall = recall.item()
+        fscore = fscore.item()
+
+
+        return {"classifier_type": self.classifier_type,
+                "feature_type": self.feature_type,
+                "seconds_training": seconds_per_hundred_thousand_training_samples,
+                "seconds_prediction": seconds_per_hundred_thousand_predictions,
+                "precision": precision, "recall": recall, "fscore": fscore}
+
+    def loadData(self, dataPath, take=None):
         df = pd.read_parquet(dataPath, engine='pyarrow')
 
-        urls = df["url"]
-        labels = df["is_dutch"]
+        if take is None:
+            urls = df["url"]
+            labels = df["is_dutch"]
+        else:
+            urls = df["url"][:min(take, len(df["url"])-1)]
+            labels = df["is_dutch"][:min(take, len(df["url"])-1)]
 
         return urls, labels
