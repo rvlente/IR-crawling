@@ -1,4 +1,4 @@
-from url_classifier import UrlClassifier
+from .url_classifier import UrlClassifier
 import pytest
 
 model_cache = dict()
@@ -37,5 +37,12 @@ def test_predict_dutchiness_of_urls():
     if os.path.isfile(path_to_model):
         results = predict_dutchiness_of_urls(urls, path_to_model)
 
-        if results[0] > results[1] or results[0] > results[2]:
-            print("Unexpected predictions")
+    else:
+
+        classifier = UrlClassifier().fit([], [], dataPath='url_classifier/url_data_with_context.parquet')
+        classifier.save(path_to_model)
+        results = classifier.predict_dutchiness(urls)
+
+    if results[0] > results[1] or results[0] > results[2]:
+        print("Unexpected predictions")
+    print(results)

@@ -24,7 +24,9 @@ from scipy.sparse import csr_matrix
 from joblib import Parallel, delayed
 import time
 import multiprocessing
-from feature_extractors import *
+from .feature_extractors import Extract_top_k_grams_size_n, Extract_ngrams_size_many
+import csv
+import itertools
 
 
 memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
@@ -57,7 +59,7 @@ class UrlClassifier:
 
         if feature_type == "top_k_ngrams_size_n":
             self._n = self._n[0]
-            self._ft_extractor: Extract_top_k_grams_size_n = Extract_top_k_grams_size_n()
+            self._ft_extractor: Extract_top_k_grams_size_n = Extract_top_k_grams_size_n(self._n, self._k)
         elif feature_type == "ngrams_size_many":
             self._ft_extractor: Extract_n_grams_size_all = Extract_n_grams_size_all(self._n, self._k)
 
@@ -71,7 +73,6 @@ class UrlClassifier:
         ngrams_freq = nltk.FreqDist(all_ngrams)
 
         self._top_k_grams = [x[0] for x in ngrams_freq.most_common(self._k)]
-
 
     def _extract_features(self, urls: Iterable[str], use_tqdm=True, parallel_feature_extraction=True) -> list[list[int]]:
 
@@ -100,9 +101,16 @@ class UrlClassifier:
             
         return result
 
-    def fit(self, train_urls: list[str], train_labels: list, parallel_feature_extraction=True) -> 'UrlClassifier':
-        self._extract_top_k_grams(train_urls)
-        train_features = self._extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
+
+    def fit(self, train_urls: list[str], train_labels: list, parallel_feature_extraction=True, dataPath=None) -> 'UrlClassifier':
+
+        # self._extract_top_k_grams(train_urls)
+        # train_features = self._extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
+        if dataPath is not None:
+            train_urls, train_labels = self.loadData(dataPath)
+        self._ft_extractor.prepare(train_urls)
+        train_features = self._ft_extractor.extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
+
         # train_features = np.array(train_features)
         
 
@@ -115,11 +123,13 @@ class UrlClassifier:
         return self
 
     def predict(self, urls: list[str]) -> np.ndarray:
-        return self._label_encoder.inverse_transform(self._classif.predict(self._extract_features(urls)))
+        # return self._label_encoder.inverse_transform(self._classif.predict(self._extract_features(urls)))
+        return self._label_encoder.inverse_transform(self._classif.predict(self._ft_extractor.extract_features(urls)))
 
     def predict_proba(self, urls: list[str]) -> np.ndarray:
-        return self._classif.predict_proba(self._extract_features(urls, parallel_feature_extraction=False))
-    
+        # return self._classif.predict_proba(self._extract_features(urls, parallel_feature_extraction=False))
+        return self._classif.predict_proba(self._ft_extractor.extract_features(urls, parallel_feature_extraction=False))
+
     def predict_dutchiness(self, urls: list[str]) -> np.ndarray:
         return self.predict_proba(urls)[:,1]
     
@@ -130,7 +140,7 @@ class UrlClassifier:
     def load(cls, path: str) -> 'UrlClassifier':
         return joblib.load(path)
 
-    def test(self, dataPath='url_data_with_context_full.csv'):
+    def test(self, dataPath='url_data_with_context.parquet'):
         # Load data
         with open(dataPath) as csvfile:
             reader = csv.reader(csvfile, delimiter=',')
@@ -160,3 +170,10 @@ class UrlClassifier:
         print('Recall:', recall_score(y_test, y_pred, pos_label=True))
         print('F-score:', f1_score(y_test, y_pred, pos_label=True))
 
+    def loadData(self, dataPath='url_data_with_context.parquet', take=None):
+        df = pd.read_parquet(dataPath, engine='pyarrow')
+
+        urls = df["url"]
+        labels = df["is_dutch"]
+
+        return urls, labels

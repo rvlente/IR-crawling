@@ -1,2 +1,3 @@
 from .url_classifier import UrlClassifier
 from .rust_functions import predict_dutchiness_of_urls, mutate_state
+from .feature_extractors import Extract_top_k_grams_size_n, Extract_ngrams_size_many

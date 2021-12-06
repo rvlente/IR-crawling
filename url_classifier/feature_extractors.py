@@ -1,9 +1,10 @@
 from typing import Iterable, Optional
-
-
+import nltk
+import multiprocessing
+from joblib import Parallel, delayed
 
 class Cctld():
-    def __init(self):
+    def __init__(self):
         self.prepared = True
 
     def prepare(self, train_urls: list[str]):
@@ -13,7 +14,7 @@ class Cctld():
         return [word for word in re.findall(r'[a-zA-Z]+', url) if word in ['nl', 'be', 'sr']]
 
 class Extract_word_features():
-    def __init(self):
+    def __init__(self):
         self.prepared = True
 
     def prepare(self, train_urls: list[str]):
@@ -22,11 +23,13 @@ class Extract_word_features():
     def extract_features(self):
         return [word for word in re.findall(r'[a-zA-Z]+', url) if len(word) > 2 and word not in exlude_words]
 
+
+
 class Extract_top_k_grams_size_n():
-    def __init(self, n, k):
+    def __init__(self, n, k):
         self.prepared = False
         self._n = n
-        self.k = k
+        self._k = k
 
     def prepare(self, train_urls: list[str]):
         all_ngrams = (nltk.ngrams(url, self._n) for url in train_urls)
@@ -57,7 +60,7 @@ class Extract_top_k_grams_size_n():
         return result
 
 class Extract_ngrams_size_many():
-    def __init(self, n, k):
+    def __init__(self, n, k):
         self.prepared = False
         self._n = n
         self._k = k

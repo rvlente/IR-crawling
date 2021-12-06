@@ -10,7 +10,6 @@ from sklearn.utils.random import sample_without_replacement
 import numpy as np
 from nltk import ngrams
 import time
-from rust_functions import test_predict_dutchiness_of_urls
 
 exlude_words = ['www', 'index', 'html', 'htm', 'http', 'https']
 
@@ -197,7 +196,7 @@ class features_extractFeatures():
     def __init__(self):
         self.vectorizer = featureExtractor
 
-    def ScoreFeatures(self, urls):
+    def ScoreFeatures(self, urls, featureExtractor=CountVectorizer(ngram_range=(3,3), analyzer='char').fit(urls)):
         featurized_data = self.vectorizer.transform(urls)
         vocabulary = self.vectorizer.vocabulary_
 
@@ -230,4 +229,4 @@ class features_extractFeatures():
 
 
 if __name__ == '__main__':
-    test_predict_dutchiness_of_urls()
+    testUrlClassifier()
