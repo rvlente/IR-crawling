@@ -14,3 +14,4 @@ __pycache__
 /url_classifier.egg-info
 /pyproject.toml
 /build
+url_classifier/url_data_with_context_full.csv
