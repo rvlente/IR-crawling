@@ -31,14 +31,18 @@ memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
 
 class UrlClassifier:
 
-    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams_size_n", use_gpu=True) -> None:
+    def __init__(self, ngram_size=None, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams_size_n", use_gpu=True) -> None:
         """
         :param ngram_size: The size of the ngrams to use
         :param top_k_ngrams: The number of ngrams to use
         :param n_estimators: The number of estimators for the classifier
-        :param classifier_type: The type of classifier to use. options: "gradient_boosting", "SVM"
+        :param classifier_type: The type of classifier to use. options: "gradient_boosting", "SVM", "LinearSVC", "ProbaLinearSVC"
+        :param feature_type: The type of features to use. options: "top_k_ngrams_size_n", "ngrams_size_many"
         """
-        self._n = ngram_size
+        if ngram_size is not None:
+            self._n = ngram_size
+        else:
+            self._n = [2]
         self._k= top_k_ngrams
 
         self._top_k_grams: Optional[list[tuple]] = None
@@ -48,15 +52,14 @@ class UrlClassifier:
             self._classif: XGBClassifier = XGBClassifier(n_estimators=n_estimators, use_label_encoder=False, tree_method=tree_method, verbosity=0)
         elif classifier_type == "SVM":
             self._classif: SVC = SVC(gamma='auto', kernel='linear', probability=True)
-        elif classifier_type == "LinearSVC":
-            self._classif: LinearSVC = LinearSVC()
         elif classifier_type == "ProbaLinearSVC":
             self._classif: ProbaLinearSVC = CalibratedClassifierCV(LinearSVC())
 
         if feature_type == "top_k_ngrams_size_n":
+            self._n = self._n[0]
             self._ft_extractor: TopKGram = Extract_top_k_grams_size_n()
-        elif feature_type == "top_k_ngrams_size_many":
-            self._ft_extractor: TopKGram = Extract_top_k_grams_size_all()
+        elif feature_type == "ngrams_size_many":
+            self._ft_extractor: TopKGram = Extract_n_grams_size_all(self._n, self._k)
 
         self._label_encoder = LabelEncoder()
 
