@@ -24,13 +24,14 @@ from scipy.sparse import csr_matrix
 from joblib import Parallel, delayed
 import time
 import multiprocessing
+from feature_extractors import *
 
 
 memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
 
 class UrlClassifier:
 
-    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", use_gpu=True) -> None:
+    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams", use_gpu=True) -> None:
         """
         :param ngram_size: The size of the ngrams to use
         :param top_k_ngrams: The number of ngrams to use
@@ -47,10 +48,19 @@ class UrlClassifier:
             self._classif: XGBClassifier = XGBClassifier(n_estimators=n_estimators, use_label_encoder=False, tree_method=tree_method, verbosity=0)
         elif classifier_type == "SVM":
             self._classif: SVC = SVC(gamma='auto', kernel='linear', probability=True)
+        elif classifier_type == "LinearSVC":
+            self._classif: LinearSVC = LinearSVC()
+        elif classifier_type == "ProbaLinearSVC":
+            self._classif: ProbaLinearSVC = CalibratedClassifierCV(LinearSVC())
+
+        if feature_type == "top_k_ngrams_size_n":
+            self._ft_extractor: TopKGram = Extract_top_k_grams_size_n()
+        elif feature_type == "top_k_ngrams_size_many":
+            self._ft_extractor: TopKGram = Extract_top_k_grams_size_all()
+
         self._label_encoder = LabelEncoder()
 
     def _extract_top_k_grams(self, train_urls: list[str]):
-        
 
         all_ngrams = (nltk.ngrams(url, self._n) for url in train_urls)
         all_ngrams = [item for sub_list in all_ngrams for item in sub_list]
@@ -116,4 +126,34 @@ class UrlClassifier:
     @classmethod
     def load(cls, path: str) -> 'UrlClassifier':
         return joblib.load(path)
+
+    def test(self, dataPath='url_data_with_context_full.csv'):
+        # Load data
+        with open(dataPath) as csvfile:
+            reader = csv.reader(csvfile, delimiter=',')
+            next(reader)  # Skip header.
+
+            urls = []
+            labels = []
+
+            for url, is_dutch, relative_url, text, parent_text in itertools.islice(reader, take):
+                urls.append(url)
+                labels.append(is_dutch == 'True')
+
+        # Embed data
+        vectorizer = CountVectorizer(analyzer=feature_extractor)
+        features = vectorizer.fit_transform(urls)
+
+        # Split in train and test sets
+        X_train, X_test, y_train, y_test = train_test_split(features, labels, shuffle=True, train_size=split)
+
+        # Test runtime
+        cu_time = time.time()
+        y_pred = self.predict(X_test)
+        print("Time: ", time.time() - cu_time)
+
+        # Print metrics
+        print('Precision:', precision_score(y_test, y_pred, pos_label=True))
+        print('Recall:', recall_score(y_test, y_pred, pos_label=True))
+        print('F-score:', f1_score(y_test, y_pred, pos_label=True))
 

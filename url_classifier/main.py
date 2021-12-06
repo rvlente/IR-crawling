@@ -98,9 +98,7 @@ def testFeaturePreparing():
         take=10_000, split=0.1, feature_extractor=_extract_trigram_features)
 
 
-    # clf = SVC(kernel='linear')
-    clf = LinearSVC()
-    # clf = CalibratedClassifierCV(clf)
+    # clf = CalibratedClassifierCV(LinearSVC())
     print(clf.feature_names_in)
     clf = clf.fit(X_train, y_train)
 
@@ -174,7 +172,7 @@ class ContextModel_Spacy:
 class UrlModel_LinearSVC:
     def __init(self, X_train, y_train):
         clf = LinearSVC()
-        clf = CalibratedClassifierCV(svm)
+        clf = CalibratedClassifierCV(clf)
         self.clf = clf.fit(self.X_train, self.y_train)
 
     def predict(self, x):
