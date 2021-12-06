@@ -197,12 +197,11 @@ class UrlModel_LinearSVC:
 
 class features_extractFeatures():
     def __init__(self):
-        vectorizer = featureExtractor
+        self.vectorizer = featureExtractor
 
     def ScoreFeatures(self, urls, featureExtractor=CountVectorizer(ngram_range=(3,3), analyzer='char').fit(urls)):
-        vectorizer = featureExtractor
-        featurized_data = vectorizer.transform(urls)
-        vocabulary = vectorizer.vocabulary_
+        featurized_data = self.vectorizer.transform(urls)
+        vocabulary = self.vectorizer.vocabulary_
 
         #vectorizer.vocabulary(vocabulary)
 
