@@ -1,10 +1,12 @@
-use std::{path::{Path, PathBuf}, str::FromStr};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
-use serde::{Serialize, Deserialize};
 use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
 
 // use pyo3::prelude::*;
-
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 pub enum CollectTrainDataMode {
@@ -33,6 +35,7 @@ pub struct CrawlerConfig {
     pub context_size: usize,
     pub collect_train_data: CollectTrainDataMode,
     pub save_every: usize,
+    pub collect_debug_data: bool,
 }
 
 pub struct Paths {
@@ -42,6 +45,7 @@ pub struct Paths {
     pub dutch_w: PathBuf,
     pub domain_c: PathBuf,
     pub train_ds: PathBuf,
+    pub debug_data: PathBuf,
 }
 
 impl Paths {
@@ -53,6 +57,7 @@ impl Paths {
         let dutch_w = base.join("dutch_webpages");
         let domain_c = base.join("domain_counts");
         let train_ds = base.join("train_ds.jsonl");
+        let debug_data = base.join("debug_data.jsonl");
 
         Self {
             que,
@@ -61,6 +66,7 @@ impl Paths {
             dutch_w,
             domain_c,
             train_ds,
+            debug_data,
         }
     }
 }

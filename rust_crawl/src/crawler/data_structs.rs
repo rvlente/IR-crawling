@@ -2,7 +2,6 @@ use std::{collections::HashSet, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct UrlData {
     pub url: Arc<str>,
@@ -14,6 +13,7 @@ pub struct UrlData {
 /// Extracted information from an html page
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocData {
+    /// Natural text (no html)
     pub text: Arc<str>,
     pub url: Arc<str>,
     pub langs: HashSet<Arc<str>>,
@@ -30,12 +30,7 @@ pub struct TrainSample {
 }
 
 impl TrainSample {
-
-    pub fn new(
-        doc_data: &DocData,
-        url_data: impl Into<Option<UrlData>>,
-        is_dutch: bool,
-    ) -> Self {
+    pub fn new(doc_data: &DocData, url_data: impl Into<Option<UrlData>>, is_dutch: bool) -> Self {
         // let url_loc = parent_content.find(doc_data.url.as_ref_str());
         let url_data: Option<UrlData> = url_data.into();
 
@@ -49,7 +44,6 @@ impl TrainSample {
             None => (None, None, None),
         };
 
-
         Self {
             url: doc_data.url.clone(),
             is_dutch,
@@ -57,6 +51,20 @@ impl TrainSample {
             url_text: text,
             url_context: parent_text,
         }
-
     }
+}
+
+// #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+// pub struct LinguaDebugData {
+
+// }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DebugData {
+    Lingua {
+        predicted_dutch: bool,
+        confidence: f64,
+        has_dutch_lang_tag: bool,
+        is_dutch_url: bool,
+    },
 }

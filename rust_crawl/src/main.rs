@@ -20,16 +20,17 @@ use crate::crawler::{config::CrawlerConfig, state::CrawlerState, Crawler};
 struct Opt {
     #[structopt(short, long, help = "File to load and store state from/to")]
     save_dir: Option<PathBuf>,
+
     #[structopt(
         short,
         long,
         help = "Optional file to load a classifier from. If not provided, queue priority is random."
     )]
     classifier_file: Option<PathBuf>,
+
     #[structopt(long, help = "amount of simultaneous workers", default_value = "128")]
     num_workers: usize,
-    // #[structopt(short, long, help = "Crawler configuration file")]
-    // cfg_file: Option<PathBuf>,
+
     #[structopt(
         long,
         default_value = "disabled",
@@ -37,15 +38,29 @@ struct Opt {
     )]
     collect_train_data: CollectTrainDataMode,
 
-    #[structopt(long, help = "Amount of characters to take as context around the urls", default_value = "250")]
+    #[structopt(
+        long,
+        help = "Amount of characters to take as context around the urls",
+        default_value = "250"
+    )]
     context_size: usize,
 
     #[structopt(long, help = "Save every n loops", default_value = "10")]
     save_every: usize,
 
     // Do not worry @wikipedia, only a few articles from the seed will be downloaded, before moving on to new domains.
-    #[structopt(long, help = "Seeds: URLs to start crawling from, only used if save_dir is not provided", default_value = "https://nl.wikipedia.org")]
+    #[structopt(
+        long,
+        help = "Seeds: URLs to start crawling from, only used if save_dir is not provided",
+        default_value = "https://nl.wikipedia.org"
+    )]
     seeds: Vec<String>,
+
+    #[structopt(
+        long,
+        help = "Collect data for debugging/analyzing crawler performance"
+    )]
+    collect_debug_data: bool,
 }
 
 fn main() {
@@ -65,7 +80,6 @@ fn main() {
         //         .ok()
         // })
         .unwrap_or_else(|| {
-
             if opt.seeds.is_empty() {
                 panic!("No seeds nor save file provided");
             }
@@ -81,13 +95,15 @@ fn main() {
         collect_train_data: opt.collect_train_data,
         context_size: opt.context_size,
         save_every: opt.save_every,
+        collect_debug_data: opt.collect_debug_data,
     };
 
     if let Some(_) = opt.classifier_file {
-
         Python::with_gil(|py| {
             let module = py.import("url_classifier").expect("Could not import python url_classifier, make sure this program is ran in a virtual environment, where the module is installed");
-            let _ = module.getattr("predict_dutchiness_of_urls").expect("Could not find prediction function, make sure the correct package is installed");
+            let _ = module.getattr("predict_dutchiness_of_urls").expect(
+                "Could not find prediction function, make sure the correct package is installed",
+            );
         });
     }
 
@@ -190,5 +206,4 @@ fn test_pyo3_multithread() {
     for t in threads {
         t.join().unwrap();
     }
-    
 }

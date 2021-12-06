@@ -47,6 +47,7 @@ class UrlClassifier:
             self._classif: XGBClassifier = XGBClassifier(n_estimators=n_estimators, use_label_encoder=False, tree_method=tree_method, verbosity=0)
         elif classifier_type == "SVM":
             self._classif: SVC = SVC(gamma='auto', kernel='linear', probability=True)
+            
         self._label_encoder = LabelEncoder()
 
     def _extract_top_k_grams(self, train_urls: list[str]):
@@ -60,7 +61,7 @@ class UrlClassifier:
         self._top_k_grams = [x[0] for x in ngrams_freq.most_common(self._k)]
 
 
-    def _extract_features(self, urls: Iterable[str], use_tqdm=True, parallel_feature_extraction=True) -> list[list[int]]:
+    def _extract_features(self, urls: Iterable[str], parallel_feature_extraction=True) -> list[list[int]]:
 
         if self._top_k_grams is None:
             raise ValueError("Top k ngrams not set, please call fit first")
@@ -78,12 +79,6 @@ class UrlClassifier:
         else:
             result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
 
-
-        # for url in tqdm(urls, desc="Extracting features", disable=not use_tqdm):
-        #     ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, self._n))
-        #     result.append(
-        #         [ngrams_in_url.get(g, 0) for g in self._top_k_grams]
-        #     )
             
         return result
 

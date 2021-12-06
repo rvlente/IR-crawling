@@ -16,10 +16,17 @@ use std::{
     time::Duration,
 };
 
+use lingua::Language::Dutch;
+use lingua::{Language, LanguageDetector, LanguageDetectorBuilder};
+
 use crossbeam::channel;
 use pyo3::{prelude::*, types::PyList};
 
-use self::{config::CrawlerConfig, data_structs::UrlData, state::CrawlerState};
+use self::{
+    config::CrawlerConfig,
+    data_structs::{DebugData, UrlData},
+    state::CrawlerState,
+};
 
 pub mod config;
 pub mod data_structs;
@@ -79,6 +86,7 @@ impl Crawler {
                 collect_train_data,
                 context_size,
                 save_every: 10,
+                collect_debug_data: false,
             },
         }
     }
@@ -133,14 +141,41 @@ impl Crawler {
     }
 
     fn is_dutch_doc(&self, doc_data: &DocData) -> bool {
-        if doc_data.langs.is_empty() {
-            return self.is_dutch_url(&doc_data.url);
-        }
-
-        doc_data
+        let contains_dutch_lang_tag = doc_data
             .langs
             .iter()
-            .any(|l| l.to_lowercase().contains("nl"))
+            .any(|l| l.to_lowercase().contains("nl"));
+
+        let txt = doc_data.text.as_ref();
+
+        let is_dutch_url = self.is_dutch_url(&doc_data.url);
+
+        if self.cfg.collect_debug_data {
+            let dutch_detector = LanguageDetectorBuilder::from_languages(&[Dutch]).build();
+            let dutch_language_detected = dutch_detector.detect_language_of(txt).is_some();
+
+            let dutch_confidence = dutch_detector
+                .compute_language_confidence_values(txt)
+                .into_iter()
+                .next()
+                .map(|(_, c)| c)
+                .unwrap_or(0.0);
+
+            let dd = DebugData::Lingua {
+                predicted_dutch: dutch_language_detected,
+                confidence: dutch_confidence,
+                has_dutch_lang_tag: contains_dutch_lang_tag,
+                is_dutch_url,
+            };
+
+            self.state.debug_data.lock().push(dd);
+        }
+
+        if doc_data.langs.is_empty() {
+            return is_dutch_url;
+        }
+
+        contains_dutch_lang_tag
     }
 
     fn get_host_count(&self, url: &str) -> usize {
@@ -220,14 +255,15 @@ impl Crawler {
         Ok(())
     }
 
-    fn get_context_(context_size: usize, parent_txt: &str, url_txt: &str, rel_url: &str) -> Option<String> {
+    fn get_context_(
+        context_size: usize,
+        parent_txt: &str,
+        url_txt: &str,
+        rel_url: &str,
+    ) -> Option<String> {
         // self.state.contexts.get(url)
 
-        let to_look_for = if url_txt.is_empty() {
-            rel_url
-        } else {
-            url_txt
-        };
+        let to_look_for = if url_txt.is_empty() { rel_url } else { url_txt };
 
         let pos = parent_txt.find(to_look_for)?;
 
@@ -248,7 +284,7 @@ impl Crawler {
         Some(parent_txt.chars().take(stop).skip(start).collect())
     }
 
-    fn get_context(&self , parent_txt: &str, url_txt: &str, rel_url: &str) -> Option<String> {
+    fn get_context(&self, parent_txt: &str, url_txt: &str, rel_url: &str) -> Option<String> {
         Self::get_context_(self.cfg.context_size, parent_txt, url_txt, rel_url)
     }
 
@@ -259,7 +295,8 @@ impl Crawler {
         let doc = Document::from(txt.as_str());
         // let doc = Document::from_read(resp)?;
 
-        let text: Arc<str> = txt.into();
+        let nat_texts: Vec<_> = doc.find(Name("html")).map(|n| n.text()).collect();
+        let nat_text = nat_texts.join("\n");
 
         let langs = doc
             .find(Name("html"))
@@ -281,7 +318,11 @@ impl Crawler {
                         (
                             rel_url.clone(),
                             url_txt.clone(),
-                            n.parent().and_then(|p| self.get_context(&p.text(), url_txt.as_ref(), rel_url.as_ref())).unwrap_or_default(),
+                            n.parent()
+                                .and_then(|p| {
+                                    self.get_context(&p.text(), url_txt.as_ref(), rel_url.as_ref())
+                                })
+                                .unwrap_or_default(),
                         )
                     });
                 url_data
@@ -296,7 +337,12 @@ impl Crawler {
                 }
                 Err(url::ParseError::RelativeUrlWithoutBase) => {
                     let url_parsed = url::Url::parse(url).ok()?;
-                    Some((url_parsed.join(link.as_ref()).ok()?.to_string().into(), link, txt, par_txt))
+                    Some((
+                        url_parsed.join(link.as_ref()).ok()?.to_string().into(),
+                        link,
+                        txt,
+                        par_txt,
+                    ))
                 }
                 Err(_) => None,
             })
@@ -314,7 +360,7 @@ impl Crawler {
             .collect();
 
         Ok(DocData {
-            text: "".to_string().into(),
+            text: nat_text.into(),
             langs,
             urls: links,
             url: url.to_owned().into(),
@@ -500,12 +546,17 @@ impl Crawler {
 
             let mut lc: usize = 0;
 
-            let save = || {
-                eprintln!("SAVING");
-                if let Err(e) = self.save_if_save_file() {
-                    eprintln!("FAILED SAVING STATE: {:?}", e);
-                } else {
-                    eprintln!("SAVE SUCCESS");
+            let save = || match self.cfg.save_file {
+                Some(_) => {
+                    eprintln!("SAVING");
+                    if let Err(e) = self.save_if_save_file() {
+                        eprintln!("FAILED SAVING STATE: {:?}", e);
+                    } else {
+                        eprintln!("SAVE SUCCESS");
+                    }
+                }
+                None => {
+                    eprintln!("NO SAVE DIRECTORY PROVIDED, NOT SAVING")
                 }
             };
 

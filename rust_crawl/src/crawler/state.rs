@@ -1,17 +1,19 @@
-use std::{io::{BufWriter, Write}, path::Path, sync::Arc};
+use std::{
+    io::{BufWriter, Write},
+    path::Path,
+    sync::Arc,
+};
 
+use super::data_structs::{DebugData, TrainSample};
+use anyhow::Result;
 use dashmap::{DashMap, DashSet};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use static_init::dynamic;
-use anyhow::{Result};
-use super::{data_structs::TrainSample};
 
 use crate::{prio_que::UrlPrioQue, utils::AsRefStr};
 
 use super::config::Paths;
-
-
 
 #[dynamic]
 static NEW_LINE: Arc<str> = "\n".to_string().into();
@@ -32,6 +34,7 @@ pub struct CrawlerState {
     pub dutch_webpages: Mutex<Vec<Arc<str>>>,
     pub domain_counts: DashMap<Arc<str>, usize>,
     pub train_dataset: Mutex<Vec<TrainSample>>,
+    pub debug_data: Mutex<Vec<DebugData>>,
 }
 
 impl CrawlerState {
@@ -43,6 +46,7 @@ impl CrawlerState {
             dutch_webpages: Default::default(),
             domain_counts: Default::default(),
             train_dataset: Default::default(),
+            debug_data: Default::default(),
         }
     }
 
@@ -91,14 +95,26 @@ impl CrawlerState {
             .flat_map(|(dom, c)| [c.to_string().into(), TAB.clone(), dom, NEW_LINE.clone()])
     }
 
-    fn drain_train_dataset_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
-        let items: Vec<_> = self.train_dataset.lock().drain(..).collect();
-        items.into_iter().flat_map(|ts| {
+    fn items_to_json_lines<I>(items: Vec<I>) -> impl Iterator<Item = Arc<str>>
+    where
+        I: Serialize,
+    {
+        items.into_iter().flat_map(|item| {
             [
-                serde_json::ser::to_string(&ts).unwrap().into(),
+                serde_json::ser::to_string(&item).unwrap().into(),
                 NEW_LINE.clone(),
             ]
         })
+    }
+
+    fn drain_train_dataset_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
+        let items: Vec<_> = self.train_dataset.lock().drain(..).collect();
+        Self::items_to_json_lines(items)
+    }
+
+    fn drain_debug_data_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
+        let items: Vec<_> = self.debug_data.lock().drain(..).collect();
+        Self::items_to_json_lines(items)
     }
 
     fn que_to_lines(&self) -> impl Iterator<Item = Arc<str>> {
@@ -190,6 +206,7 @@ impl CrawlerState {
         Self::lines_to_file(paths.dutch_w, self.dutch_wp_to_lines(), false)?;
         Self::lines_to_file(paths.domain_c, self.domain_counts_to_lines(), false)?;
         Self::lines_to_file(paths.train_ds, self.drain_train_dataset_to_lines(), true)?;
+        Self::lines_to_file(paths.debug_data, self.drain_debug_data_to_lines(), true)?;
 
         Ok(())
     }
@@ -235,6 +252,7 @@ impl CrawlerState {
             dutch_webpages: Mutex::new(dutch_webpages),
             domain_counts,
             train_dataset: Mutex::new(Vec::new()),
+            debug_data: Mutex::new(Vec::new()),
         })
     }
 }
