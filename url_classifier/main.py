@@ -10,7 +10,7 @@ from sklearn.utils.random import sample_without_replacement
 import numpy as np
 from nltk import ngrams
 import time
-
+from rust_functions import test_predict_dutchiness_of_urls
 
 exlude_words = ['www', 'index', 'html', 'htm', 'http', 'https']
 
@@ -80,7 +80,7 @@ def load_dataset_only(take=None):
     return urls, labels
 
 def load_dataset_context(take=None):
-    with open('url_data.csv') as csvfile:
+    with open('url_data_with_context_full.csv') as csvfile:
         reader = csv.reader(csvfile, delimiter=',')
         next(reader)  # Skip header.
 
@@ -197,7 +197,7 @@ class features_extractFeatures():
     def __init__(self):
         self.vectorizer = featureExtractor
 
-    def ScoreFeatures(self, urls, featureExtractor=CountVectorizer(ngram_range=(3,3), analyzer='char').fit(urls)):
+    def ScoreFeatures(self, urls):
         featurized_data = self.vectorizer.transform(urls)
         vocabulary = self.vectorizer.vocabulary_
 
@@ -230,4 +230,4 @@ class features_extractFeatures():
 
 
 if __name__ == '__main__':
-    UrlModel_LinearSVC.test()
+    test_predict_dutchiness_of_urls()

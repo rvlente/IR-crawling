@@ -9,7 +9,7 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics import precision_score, recall_score, f1_score
-from sklearn.svm import SVC
+from sklearn.svm import SVC, LinearSVC
 from sklearn.preprocessing import LabelEncoder
 import pandas as pd
 import nltk
@@ -53,13 +53,13 @@ class UrlClassifier:
         elif classifier_type == "SVM":
             self._classif: SVC = SVC(gamma='auto', kernel='linear', probability=True)
         elif classifier_type == "ProbaLinearSVC":
-            self._classif: ProbaLinearSVC = CalibratedClassifierCV(LinearSVC())
+            self._classif: CalibratedClassifierCV = CalibratedClassifierCV(LinearSVC())
 
         if feature_type == "top_k_ngrams_size_n":
             self._n = self._n[0]
-            self._ft_extractor: TopKGram = Extract_top_k_grams_size_n()
+            self._ft_extractor: Extract_top_k_grams_size_n = Extract_top_k_grams_size_n()
         elif feature_type == "ngrams_size_many":
-            self._ft_extractor: TopKGram = Extract_n_grams_size_all(self._n, self._k)
+            self._ft_extractor: Extract_n_grams_size_all = Extract_n_grams_size_all(self._n, self._k)
 
         self._label_encoder = LabelEncoder()
 

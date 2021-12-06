@@ -1,8 +1,8 @@
+from typing import Iterable, Optional
 
 
 
-
-class Cctld(url):
+class Cctld():
     def __init(self):
         self.prepared = True
 
@@ -12,7 +12,7 @@ class Cctld(url):
     def extract_features(self):
         return [word for word in re.findall(r'[a-zA-Z]+', url) if word in ['nl', 'be', 'sr']]
 
-class Extract_word_features(url):
+class Extract_word_features():
     def __init(self):
         self.prepared = True
 
