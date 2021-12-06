@@ -102,10 +102,14 @@ class UrlClassifier:
         return result
 
 
-    def fit(self, train_urls: list[str], train_labels: list, parallel_feature_extraction=True, dataPath=None) -> 'UrlClassifier':
-
+    def fit(self, train_urls: list[str]=None, train_labels: list=None, parallel_feature_extraction=True, dataPath=None) -> 'UrlClassifier':
         # self._extract_top_k_grams(train_urls)
         # train_features = self._extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
+        if train_urls is None and train_labels is None and dataPath is none:
+            raise ValueError("No data is given. Specify either train_urls and train_labels or provide a path name")
+        if train_urs is not None and train_labels is not None and dataPath is not None:
+            raise ValueError("Both (train_urls, train_labels) and path name are specified. Please specify only one to avoid ambiguity")
+        
         if dataPath is not None:
             train_urls, train_labels = self.loadData(dataPath)
         self._ft_extractor.prepare(train_urls)

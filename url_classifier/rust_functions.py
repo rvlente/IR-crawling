@@ -38,8 +38,7 @@ def test_predict_dutchiness_of_urls():
         results = predict_dutchiness_of_urls(urls, path_to_model)
 
     else:
-
-        classifier = UrlClassifier().fit([], [], dataPath='url_classifier/url_data_with_context.parquet')
+        classifier = UrlClassifier().fit(dataPath='url_classifier/url_data_with_context.parquet')
         classifier.save(path_to_model)
         results = classifier.predict_dutchiness(urls)
 
