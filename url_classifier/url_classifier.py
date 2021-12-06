@@ -31,7 +31,7 @@ memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
 
 class UrlClassifier:
 
-    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams", use_gpu=True) -> None:
+    def __init__(self, ngram_size=2, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams_size_n", use_gpu=True) -> None:
         """
         :param ngram_size: The size of the ngrams to use
         :param top_k_ngrams: The number of ngrams to use
