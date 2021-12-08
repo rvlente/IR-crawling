@@ -34,7 +34,6 @@ def main(args: Args):
             
             for k, v in entry.items():
                 data[k].append(v)
-                data[f"empty_{k}"].append("")
             
 
     df = pd.DataFrame.from_dict(data)
@@ -43,9 +42,9 @@ def main(args: Args):
     df = df.drop_duplicates(subset='url')
 
     # drop all columns which contain only empty strings
-    # empty_string_cols = df.columns[ic(df.apply(lambda x: x == "", axis=1)).all()]
-    # print(empty_string_cols)
-    # assert False
+    empty_string_cols = df.columns[df.apply(lambda x: x == "", axis=1).all()]
+    df = df.drop(empty_string_cols, axis=1) 
+   
 
     # write the output
     # df.to_csv(f"{args.output}.csv", index=False)

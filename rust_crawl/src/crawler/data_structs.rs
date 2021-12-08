@@ -1,5 +1,6 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::{HashSet, HashMap}, sync::Arc};
 
+use lingua::Language;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
@@ -63,8 +64,15 @@ impl TrainSample {
 pub enum DebugData {
     Lingua {
         predicted_dutch: bool,
-        confidence: f64,
+        dutch_confidence: f64,
+        confidences: HashMap<Language, f64>,
         has_dutch_lang_tag: bool,
         is_dutch_url: bool,
+        text_length: usize,
     },
+    DocMetadata {
+        url: Arc<str>,
+        langs: HashSet<Arc<str>>,
+        urls: HashSet<UrlData>,
+    }
 }

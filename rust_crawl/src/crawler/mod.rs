@@ -8,7 +8,7 @@ use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
 use static_init::dynamic;
 use std::{
-    collections::HashSet,
+    collections::{HashSet, HashMap},
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -16,11 +16,12 @@ use std::{
     time::Duration,
 };
 
-use lingua::Language::Dutch;
 use lingua::{Language, LanguageDetector, LanguageDetectorBuilder};
 
 use crossbeam::channel;
 use pyo3::{prelude::*, types::PyList};
+
+use crate::utils::find_seq_in_slice;
 
 use self::{
     config::CrawlerConfig,
@@ -151,21 +152,22 @@ impl Crawler {
         let is_dutch_url = self.is_dutch_url(&doc_data.url);
 
         if self.cfg.collect_debug_data {
-            let dutch_detector = LanguageDetectorBuilder::from_languages(&[Dutch]).build();
-            let dutch_language_detected = dutch_detector.detect_language_of(txt).is_some();
+            let detector = LanguageDetectorBuilder::from_all_languages().build();
+            // let detector = LanguageDetectorBuilder::from_languages(&[Language::Dutch, Language::English]).build();
+            let dutch_language_detected = detector.detect_language_of(txt) == Some(Language::Dutch);
+            let confidences: HashMap<_, _> = detector
+            .compute_language_confidence_values(txt)
+            .into_iter().collect();
 
-            let dutch_confidence = dutch_detector
-                .compute_language_confidence_values(txt)
-                .into_iter()
-                .next()
-                .map(|(_, c)| c)
-                .unwrap_or(0.0);
+            let dutch_confidence = *confidences.get(&Language::Dutch).unwrap_or(&0.0);
 
             let dd = DebugData::Lingua {
                 predicted_dutch: dutch_language_detected,
-                confidence: dutch_confidence,
+                dutch_confidence,
+                confidences,
                 has_dutch_lang_tag: contains_dutch_lang_tag,
                 is_dutch_url,
+                text_length: txt.chars().count(),
             };
 
             self.state.debug_data.lock().push(dd);
@@ -263,9 +265,10 @@ impl Crawler {
     ) -> Option<String> {
         // self.state.contexts.get(url)
 
-        let to_look_for = if url_txt.is_empty() { rel_url } else { url_txt };
+        let to_look_for:Vec<char> = (if url_txt.is_empty() { rel_url } else { url_txt }).chars().collect();
+        let text: Vec<char> = parent_txt.chars().collect();
 
-        let pos = parent_txt.find(to_look_for)?;
+        let pos = find_seq_in_slice(&text, &to_look_for)?;
 
         // let context_size = self.cfg.context_size;
 
@@ -275,13 +278,13 @@ impl Crawler {
             0
         };
 
-        let stop = if pos + context_size < parent_txt.len() {
+        let stop = if pos + context_size < text.len() {
             pos + context_size
         } else {
-            parent_txt.len()
+            text.len()
         };
 
-        Some(parent_txt.chars().take(stop).skip(start).collect())
+        Some(text[start..stop].iter().collect())
     }
 
     fn get_context(&self, parent_txt: &str, url_txt: &str, rel_url: &str) -> Option<String> {
@@ -298,7 +301,7 @@ impl Crawler {
         let nat_texts: Vec<_> = doc.find(Name("html")).map(|n| n.text()).collect();
         let nat_text = nat_texts.join("\n");
 
-        let langs = doc
+        let langs: HashSet<Arc<str>> = doc
             .find(Name("html"))
             .filter_map(|n| n.attr("lang"))
             .map(ToOwned::to_owned)
@@ -358,6 +361,17 @@ impl Crawler {
                 // parent_text: String::new().into(),
             })
             .collect();
+
+        if self.cfg.collect_debug_data {
+            let dd = DebugData::DocMetadata{
+                url: url.into(),
+                langs: langs.clone(),
+                urls: links.clone(),
+            };
+
+            self.state.debug_data.lock().push(dd);
+            
+        }
 
         Ok(DocData {
             text: nat_text.into(),
@@ -608,3 +622,4 @@ impl Crawler {
         });
     }
 }
+

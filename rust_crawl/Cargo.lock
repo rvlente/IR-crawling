@@ -2635,6 +2635,7 @@ dependencies = [
  "fs_extra",
  "http",
  "hyper",
+ "itertools",
  "lingua",
  "num_cpus",
  "parking_lot",

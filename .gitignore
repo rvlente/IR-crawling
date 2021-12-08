@@ -15,3 +15,4 @@ __pycache__
 /pyproject.toml
 /build
 url_classifier/url_data_with_context_full.csv
+/ignore
