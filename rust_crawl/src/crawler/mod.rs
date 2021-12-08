@@ -287,8 +287,8 @@ impl Crawler {
         Some(text[start..stop].iter().collect())
     }
 
-    fn get_context(&self, parent_txt: &str, url_txt: &str, rel_url: &str) -> Option<String> {
-        Self::get_context_(self.cfg.context_size, parent_txt, url_txt, rel_url)
+    fn get_context(&self, full_context: &str, url_txt: &str, rel_url: &str) -> Option<String> {
+        Self::get_context_(self.cfg.context_size, full_context, url_txt, rel_url)
     }
 
     async fn get_doc_data(&self, url: &str) -> Result<DocData> {
@@ -321,11 +321,12 @@ impl Crawler {
                         (
                             rel_url.clone(),
                             url_txt.clone(),
-                            n.parent()
-                                .and_then(|p| {
-                                    self.get_context(&p.text(), url_txt.as_ref(), rel_url.as_ref())
-                                })
-                                .unwrap_or_default(),
+                            // n.parent()
+                            //     .and_then(|p| {
+                            //         self.get_context(&p.text(), url_txt.as_ref(), rel_url.as_ref())
+                            //     })
+                            //     .unwrap_or_default(),
+                            self.get_context(&nat_text, url_txt.as_ref(), rel_url.as_ref()).unwrap_or_default(),
                         )
                     });
                 url_data
