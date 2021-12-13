@@ -64,9 +64,9 @@ def test_all_models():
         per_classifier_fscore = []
         for feature_type in feature_types:
             result = UrlClassifier(classifier_type=classifier_type, feature_type=feature_type).test(dataPath, take=1000)
-            per_classifier_precision.append(result["precision"])
-            per_classifier_recall.append(result["recall"])
-            per_classifier_fscore.append(result["fscore"])
+            per_classifier_precision.append(round(result["precision"], 3))
+            per_classifier_recall.append(round(result["recall"], 3))
+            per_classifier_fscore.append(round(result["fscore"], 3))
         precision.append(per_classifier_precision)
         recall.append(per_classifier_recall)
         fscore.append(per_classifier_fscore)
@@ -88,8 +88,13 @@ def matrixPlot(ax, data, title):
     im = ax.imshow(data)
 
     # Show all ticks and label them with the respective list entries
-    ax.set_xticks(np.arange(len(feature_types)))#, labels=feature_types)
-    ax.set_yticks(np.arange(len(classifier_types)))#, labels=classifier_types)
+    xlabels = []
+    for label in feature_types:
+        xlabels.append(label.replace("top_k_ngrams_", "", 1))
+    ax.set_xticks(np.arange(len(xlabels)))
+    ax.set_xticklabels(xlabels)
+    ax.set_yticks(np.arange(len(classifier_types)))
+    ax.set_yticklabels(classifier_types)
 
     # Rotate the tick labels and set their alignment.
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
