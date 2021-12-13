@@ -3,7 +3,7 @@ default = []
 blocking_requests = []
 
 [package]
-edition = "2018"
+edition = "2021"
 name = "rust_crawl"
 version = "0.1.0"
 
