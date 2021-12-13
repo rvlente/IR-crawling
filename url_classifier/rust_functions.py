@@ -63,6 +63,7 @@ def test_all_models():
         per_classifier_recall = []
         per_classifier_fscore = []
         for feature_type in feature_types:
+            print(classifier_type, feature_type)
             result = UrlClassifier(classifier_type=classifier_type, feature_type=feature_type).test(dataPath, take=1000)
             per_classifier_precision.append(round(result["precision"], 3))
             per_classifier_recall.append(round(result["recall"], 3))

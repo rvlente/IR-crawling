@@ -2,6 +2,7 @@ from typing import Iterable, Optional
 import nltk
 import multiprocessing
 from joblib import Parallel, delayed
+import numpy as np
 
 class Cctld():
     def __init__(self):
@@ -79,6 +80,8 @@ class Extract_top_k_grams_size_many():
 
         results = []
         for extractor in self._top_k_grams_extractors:
-            results.extend(extractor.extract_features(urls, parallel_feature_extraction))
+            result = np.array(extractor.extract_features(urls, parallel_feature_extraction))
+            results.append(result)
+        results = np.hstack(results)
 
         return results

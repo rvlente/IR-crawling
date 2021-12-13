@@ -127,8 +127,7 @@ class UrlClassifier:
 
         self._label_encoder.fit(train_labels)
         train_labels = self._label_encoder.transform(train_labels)
-        print(train_labels.shape)
-        print(train_features.shape)
+
         self._classif.fit(train_features, train_labels)
 
         return self
