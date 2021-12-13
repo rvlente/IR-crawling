@@ -50,10 +50,8 @@ def test_all_models():
     """
     Tests all the model and feature combinations
     """
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    from matplotlib.ticker import FuncFormatter
     import numpy as np
+    import matplotlib.pyplot as plt
 
     dataPath = 'url_classifier/url_data_with_context.parquet'
 
@@ -76,9 +74,18 @@ def test_all_models():
     recall = np.array(recall)
     fscore = np.array(fscore)
 
+    fig, ax = plt.subplots(3)
+    matrixPlot(ax[0], precision, "precision")
+    matrixPlot(ax[1], recall, "recall")
+    matrixPlot(ax[2], fscore, "fscore")
 
-    fig, ax = plt.subplots()
-    im = ax.imshow(precision)
+    fig.tight_layout()
+    plt.show() # This doesnt work and i have no idea why ~Benjamin
+
+def matrixPlot(ax, data, title):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    im = ax.imshow(data)
 
     # Show all ticks and label them with the respective list entries
     ax.set_xticks(np.arange(len(classifier_types)))#, labels=classifier_types)
@@ -91,10 +98,9 @@ def test_all_models():
     # Loop over data dimensions and create text annotations.
     for i in range(len(classifier_types)):
         for j in range(len(feature_types)):
-            text = ax.text(j, i, precision[i, j],
+            text = ax.text(j, i, data[i, j],
                            ha="center", va="center", color="w")
 
-    ax.set_title("Precision")
-    fig.tight_layout()
-    plt.show() # This doesnt work and i have no idea why ~Benjamin
+    ax.set_title(title)
+
 
