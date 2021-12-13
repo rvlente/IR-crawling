@@ -60,6 +60,7 @@ class Extract_top_k_grams_size_n():
 
         return result
 
+
 class Extract_top_k_grams_size_many():
     def __init__(self, n, k):
         self.prepared = False

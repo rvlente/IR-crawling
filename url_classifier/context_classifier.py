@@ -30,24 +30,26 @@ from .feature_extractors import Extract_top_k_grams_size_n, Extract_top_k_grams_
 import csv
 import itertools
 
-
 memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
 
-class UrlClassifier:
+class ContextClassifier:
 
-    def __init__(self, ngram_size=None, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams_size_n", use_gpu=True) -> None:
+    def __init__(self, context_size, ngram_size=None, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams_size_n", use_gpu=True) -> None:
         """
+        :param context_size: The maximum size of the context to use
         :param ngram_size: The size of the ngrams to use
         :param top_k_ngrams: The number of ngrams to use
         :param n_estimators: The number of estimators for the classifier
         :param classifier_type: The type of classifier to use. options: "gradient_boosting", "SVM", "LinearSVC", "ProbaLinearSVC"
         :param feature_type: The type of features to use. options: "top_k_ngrams_size_n", "ngrams_size_many"
         """
+        self.context_size = context_size
+
         if ngram_size is not None:
             self._n = ngram_size
         else:
-            self._n = [3, 4, 5, 6, 7]
-        self._k= top_k_ngrams
+            self._n = [2]
+        self._k = top_k_ngrams
 
         self._top_k_grams: Optional[list[tuple]] = None
         self.classifier_type = classifier_type
@@ -96,19 +98,10 @@ class UrlClassifier:
         else:
             result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
 
-
-        # for url in tqdm(urls, desc="Extracting features", disable=not use_tqdm):
-        #     ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, self._n))
-        #     result.append(
-        #         [ngrams_in_url.get(g, 0) for g in self._top_k_grams]
-        #     )
-            
         return result
 
 
-    def fit(self, train_urls: list[str]=None, train_labels: list=None, parallel_feature_extraction=True, dataPath=None) -> 'UrlClassifier':
-        # self._extract_top_k_grams(train_urls)
-        # train_features = self._extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
+    def fit(self, train_urls: list[str]=None, train_labels: list=None, parallel_feature_extraction=True, dataPath=None) -> 'ContextClassifier':
         if train_urls is None and train_labels is None and dataPath is None:
             raise ValueError("No data is given. Specify either train_urls and train_labels or provide a path name")
         if train_urls is not None and train_labels is not None and dataPath is not None:
@@ -118,9 +111,6 @@ class UrlClassifier:
             train_urls, train_labels = self.loadData(dataPath)
         self._ft_extractor.prepare(train_urls)
         train_features = self._ft_extractor.extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
-
-        # train_features = np.array(train_features)
-
 
         self._label_encoder.fit(train_labels)
         train_labels = self._label_encoder.transform(train_labels)
@@ -144,7 +134,7 @@ class UrlClassifier:
         joblib.dump(self, path + " " + self.classifier_type + " " + self.feature_type)
 
     @classmethod
-    def load(cls, path: str) -> 'UrlClassifier':
+    def load(cls, path: str) -> 'ContextClassifier':
         return joblib.load(path)
 
     def test(self, dataPath, split=0.9, take=None):
@@ -158,21 +148,18 @@ class UrlClassifier:
         cu_time = time.time()
         self.fit(X_train, y_train)
         seconds = time.time() - cu_time
-        seconds_training_samples = seconds / 0.1
+        seconds_per_hundred_thousand_training_samples = seconds * (100000/len(X_train))
 
         # Test prediction time
         cu_time = time.time()
         y_pred = self.predict(X_test)
         seconds = time.time() - cu_time
-        seconds_predictions = seconds / 0.9
+        seconds_per_hundred_thousand_predictions = seconds * (100000/len(X_test))
 
         # Print metrics
         precision = precision_score(y_test, y_pred, pos_label=True)
         recall = recall_score(y_test, y_pred, pos_label=True)
         fscore = f1_score(y_test, y_pred, pos_label=True)
-
-        # auc = roc_auc_score(y_test, y_pred, average=None)
-        # fpr, tpr, thresholds = roc_curve(y_test, y_pred)
 
         precision = precision.item()
         recall = recall.item()
@@ -180,18 +167,18 @@ class UrlClassifier:
 
         return {"classifier_type": self.classifier_type,
                 "feature_type": self.feature_type,
-                "seconds_training": seconds_training_samples,
-                "seconds_prediction": seconds_predictions,
+                "seconds_training": seconds_per_hundred_thousand_training_samples,
+                "seconds_prediction": seconds_per_hundred_thousand_predictions,
                 "precision": precision, "recall": recall, "fscore": fscore}
 
     def loadData(self, dataPath, take=None):
         df = pd.read_parquet(dataPath, engine='pyarrow')
 
         if take is None:
-            urls = df["url"]
+            urls = df["url_context"]
             labels = df["is_dutch"]
         else:
-            urls = df["url"][:min(take, len(df["url"])-1)]
-            labels = df["is_dutch"][:min(take, len(df["url"])-1)]
+            urls = df["url_context"][:min(take, len(df["url_context"])-1)]
+            labels = df["is_dutch"][:min(take, len(df["url_context"])-1)]
 
         return urls, labels

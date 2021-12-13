@@ -12,6 +12,8 @@ import mlflow
 import numpy as np
 from tempfile import TemporaryDirectory
 
+from url_classifier.context_classifier import ContextClassifier
+
 @dataclass
 class Args:
     datafile: str
@@ -56,9 +58,8 @@ def train_and_classify(
         clf_type="gradient_boosting",
         use_gpu=True,
     ) -> tuple[np.ndarray, UrlClassifier]:
-    # clf = RandomForestClassifier(n_estimators=500, random_state=42)
-    # clf = GradientBoostingClassifier(n_estimators=500, random_state=42)
-    clf = UrlClassifier(top_k_ngrams=top_k_ngrams, n_estimators=n_estimators, ngram_size=ngram_size, classifier_type=clf_type, use_gpu=use_gpu)
+    
+    clf = ContextClassifier(100, top_k_ngrams=top_k_ngrams, n_estimators=n_estimators, ngram_size=[ngram_size], classifier_type=clf_type, use_gpu=use_gpu)
     clf.fit(train_data, targets)
     return clf.predict(test_feats), clf
 
@@ -87,12 +88,12 @@ def main(args: Args):
     # log args to mlflow
     mlflow.log_params(vars(args))
 
-    data = pd.read_csv(args.datafile)
+    data = pd.read_parquet(args.datafile)
     
     if args.n_samples is not None:
         data = data.sample(n=args.n_samples, random_state=42)
 
-    features_strs = data["url"].to_list()
+    features_strs = data["url_context"].to_list()
     labels = data["is_dutch"].to_list()
 
 

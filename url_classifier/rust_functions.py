@@ -1,7 +1,14 @@
-from .url_classifier import UrlClassifier, classifier_types, feature_types
-import pytest
+from .url_classifier import UrlClassifier
+from .context_classifier import ContextClassifier
+import numpy as np
+import matplotlib.pyplot as plt
+import time
 
 model_cache = dict()
+
+
+classifier_types = ["gradient_boosting", "SVM", "ProbaLinearSVC"]
+feature_types = ["top_k_ngrams_size_n", "top_k_ngrams_size_many"]
 
 
 def predict_dutchiness_of_urls(urls: list[str], path_to_model: str) -> list[float]:
@@ -46,13 +53,10 @@ def test_predict_dutchiness_of_urls():
         print("Unexpected predictions")
     print(results)
 
-def test_all_models():
+def test_url_models():
     """
-    Tests all the model and feature combinations
+    Tests all the model and feature combinations for the url classifier.
     """
-    import numpy as np
-    import matplotlib.pyplot as plt
-    import time
 
     dataPath = 'url_classifier/url_data_with_context.parquet'
     nr_data_points = 1000
@@ -90,6 +94,40 @@ def test_all_models():
 
     fig.tight_layout()
     plt.show()
+
+def test_context_models():
+    """
+    Tests all the model and feature combinations for the context classifier.
+    """
+
+    dataPath = 'url_classifier/url_data_with_context.parquet'
+
+    precision = []
+    recall = []
+    fscore = []
+    for classifier_type in classifier_types:
+        per_classifier_precision = []
+        per_classifier_recall = []
+        per_classifier_fscore = []
+        for feature_type in feature_types:
+            result = ContextClassifier(classifier_type=classifier_type, feature_type=feature_type).test(dataPath, take=1000)
+            per_classifier_precision.append(result["precision"])
+            per_classifier_recall.append(result["recall"])
+            per_classifier_fscore.append(result["fscore"])
+        precision.append(per_classifier_precision)
+        recall.append(per_classifier_recall)
+        fscore.append(per_classifier_fscore)
+    precision = np.array(precision)
+    recall = np.array(recall)
+    fscore = np.array(fscore)
+
+    fig, ax = plt.subplots(3)
+    matrixPlot(ax[0], precision, "precision")
+    matrixPlot(ax[1], recall, "recall")
+    matrixPlot(ax[2], fscore, "fscore")
+
+    fig.tight_layout()
+    plt.show() # This doesnt work and i have no idea why ~Benjamin
 
 def matrixPlot(ax, data, title):
     import numpy as np
