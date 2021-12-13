@@ -161,13 +161,13 @@ class UrlClassifier:
         cu_time = time.time()
         self.fit(X_train, y_train)
         seconds = time.time() - cu_time
-        seconds_training_samples = seconds
+        seconds_training_samples = seconds / 0.1
 
         # Test prediction time
         cu_time = time.time()
         y_pred = self.predict(X_test)
         seconds = time.time() - cu_time
-        seconds_predictions = seconds
+        seconds_predictions = seconds / 0.9
 
         # Print metrics
         precision = precision_score(y_test, y_pred, pos_label=True)
