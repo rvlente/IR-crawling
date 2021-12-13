@@ -74,13 +74,13 @@ def test_all_models():
     recall = np.array(recall)
     fscore = np.array(fscore)
 
-    fig, ax = plt.subplots(3)
+    fig, ax = plt.subplots(1,3)
     matrixPlot(ax[0], precision, "precision")
     matrixPlot(ax[1], recall, "recall")
     matrixPlot(ax[2], fscore, "fscore")
 
     fig.tight_layout()
-    plt.show() # This doesnt work and i have no idea why ~Benjamin
+    plt.show()
 
 def matrixPlot(ax, data, title):
     import numpy as np
@@ -88,8 +88,8 @@ def matrixPlot(ax, data, title):
     im = ax.imshow(data)
 
     # Show all ticks and label them with the respective list entries
-    ax.set_xticks(np.arange(len(classifier_types)))#, labels=classifier_types)
-    ax.set_yticks(np.arange(len(feature_types)))#, labels=feature_types)
+    ax.set_xticks(np.arange(len(feature_types)))#, labels=feature_types)
+    ax.set_yticks(np.arange(len(classifier_types)))#, labels=classifier_types)
 
     # Rotate the tick labels and set their alignment.
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
