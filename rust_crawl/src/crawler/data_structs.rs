@@ -1,4 +1,4 @@
-use std::{collections::{HashSet, HashMap}, sync::Arc};
+use std::{collections::{HashSet, HashMap}, sync::Arc, time::Duration};
 
 use lingua::Language;
 use serde::{Deserialize, Serialize};
@@ -61,6 +61,13 @@ impl TrainSample {
 // }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TimingType {
+    Download,
+    Process,
+    Predict
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DebugData {
     Lingua {
         predicted_dutch: bool,
@@ -74,5 +81,9 @@ pub enum DebugData {
         url: Arc<str>,
         langs: HashSet<Arc<str>>,
         urls: HashSet<UrlData>,
+    },
+    Timing {
+        type_: TimingType,
+        duration_secs: f64,
     }
 }
