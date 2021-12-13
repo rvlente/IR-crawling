@@ -52,33 +52,41 @@ def test_all_models():
     """
     import numpy as np
     import matplotlib.pyplot as plt
+    import time
 
     dataPath = 'url_classifier/url_data_with_context.parquet'
+    nr_data_points = 1000
 
     precision = []
     recall = []
     fscore = []
+    times= []
     for classifier_type in classifier_types:
         per_classifier_precision = []
         per_classifier_recall = []
         per_classifier_fscore = []
+        per_classifier_time = []
         for feature_type in feature_types:
             print(classifier_type, feature_type)
-            result = UrlClassifier(classifier_type=classifier_type, feature_type=feature_type).test(dataPath, take=1000)
+            result = UrlClassifier(classifier_type=classifier_type, feature_type=feature_type).test(dataPath, take=nr_data_points)
             per_classifier_precision.append(round(result["precision"], 3))
             per_classifier_recall.append(round(result["recall"], 3))
             per_classifier_fscore.append(round(result["fscore"], 3))
+            per_classifier_time.append(round(result["seconds_prediction"], 3))
         precision.append(per_classifier_precision)
         recall.append(per_classifier_recall)
         fscore.append(per_classifier_fscore)
+        times.append(per_classifier_time)
     precision = np.array(precision)
     recall = np.array(recall)
     fscore = np.array(fscore)
+    times = np.array(times)
 
-    fig, ax = plt.subplots(1,3)
-    matrixPlot(ax[0], precision, "precision")
-    matrixPlot(ax[1], recall, "recall")
-    matrixPlot(ax[2], fscore, "fscore")
+    fig, ax = plt.subplots(2, 2)
+    matrixPlot(ax[0][0], precision, "Precision")
+    matrixPlot(ax[0][1], recall, "Recall")
+    matrixPlot(ax[1][0], fscore, "F-score")
+    matrixPlot(ax[1][1], times, "Runtimes sec/" + str(nr_data_points) + " urls")
 
     fig.tight_layout()
     plt.show()
@@ -91,11 +99,11 @@ def matrixPlot(ax, data, title):
     # Show all ticks and label them with the respective list entries
     xlabels = []
     for label in feature_types:
-        xlabels.append(label.replace("top_k_ngrams_", "", 1))
+        xlabels.append(label.replace("top_k_", "", 1).replace("_n"," 2").replace("_many", " [3,4,5,6,7]"))
     ax.set_xticks(np.arange(len(xlabels)))
-    ax.set_xticklabels(xlabels)
+    ax.set_xticklabels(xlabels, fontsize=6)
     ax.set_yticks(np.arange(len(classifier_types)))
-    ax.set_yticklabels(classifier_types)
+    ax.set_yticklabels(classifier_types, fontsize=6)
 
     # Rotate the tick labels and set their alignment.
     plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
@@ -109,6 +117,6 @@ def matrixPlot(ax, data, title):
             text = ax.text(j, i, data[i, j],
                            ha="center", va="center", color="w")
 
-    ax.set_title(title)
+    ax.set_title(title, fontsize=7)
 
 

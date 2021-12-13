@@ -161,13 +161,13 @@ class UrlClassifier:
         cu_time = time.time()
         self.fit(X_train, y_train)
         seconds = time.time() - cu_time
-        seconds_per_hundred_thousand_training_samples = seconds * (100000/len(X_train))
+        seconds_training_samples = seconds
 
         # Test prediction time
         cu_time = time.time()
         y_pred = self.predict(X_test)
         seconds = time.time() - cu_time
-        seconds_per_hundred_thousand_predictions = seconds * (100000/len(X_test))
+        seconds_predictions = seconds
 
         # Print metrics
         precision = precision_score(y_test, y_pred, pos_label=True)
@@ -184,8 +184,8 @@ class UrlClassifier:
 
         return {"classifier_type": self.classifier_type,
                 "feature_type": self.feature_type,
-                "seconds_training": seconds_per_hundred_thousand_training_samples,
-                "seconds_prediction": seconds_per_hundred_thousand_predictions,
+                "seconds_training": seconds_training_samples,
+                "seconds_prediction": seconds_predictions,
                 "precision": precision, "recall": recall, "fscore": fscore}
 
     def loadData(self, dataPath, take=None):
