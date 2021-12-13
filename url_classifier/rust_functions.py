@@ -98,7 +98,7 @@ def matrixPlot(ax, data, title):
     # Loop over data dimensions and create text annotations.
     for i in range(len(classifier_types)):
         for j in range(len(feature_types)):
-            text = ax.text(j, i, data[i, j],
+            text = ax.text(j, i, f"{data[i, j]:.2f}",
                            ha="center", va="center", color="w")
 
     ax.set_title(title)
