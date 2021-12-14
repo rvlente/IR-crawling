@@ -95,20 +95,11 @@ class UrlClassifier:
                 result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
         else:
             result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
-
-
-        # for url in tqdm(urls, desc="Extracting features", disable=not use_tqdm):
-        #     ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, self._n))
-        #     result.append(
-        #         [ngrams_in_url.get(g, 0) for g in self._top_k_grams]
-        #     )
             
         return result
 
 
     def fit(self, train_urls: list[str]=None, train_labels: list=None, parallel_feature_extraction=True, dataPath=None) -> 'UrlClassifier':
-        # self._extract_top_k_grams(train_urls)
-        # train_features = self._extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
         if train_urls is None and train_labels is None and dataPath is None:
             raise ValueError("No data is given. Specify either train_urls and train_labels or provide a path name")
         if train_urls is not None and train_labels is not None and dataPath is not None:
@@ -119,9 +110,6 @@ class UrlClassifier:
         self._ft_extractor.prepare(train_urls)
         train_features = self._ft_extractor.extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
 
-        # train_features = np.array(train_features)
-
-
         self._label_encoder.fit(train_labels)
         train_labels = self._label_encoder.transform(train_labels)
 
@@ -130,11 +118,9 @@ class UrlClassifier:
         return self
 
     def predict(self, urls: list[str]) -> np.ndarray:
-        # return self._label_encoder.inverse_transform(self._classif.predict(self._extract_features(urls)))
         return self._label_encoder.inverse_transform(self._classif.predict(self._ft_extractor.extract_features(urls)))
 
     def predict_proba(self, urls: list[str]) -> np.ndarray:
-        # return self._classif.predict_proba(self._extract_features(urls, parallel_feature_extraction=False))
         return self._classif.predict_proba(self._ft_extractor.extract_features(urls, parallel_feature_extraction=False))
 
     def predict_dutchiness(self, urls: list[str]) -> np.ndarray:

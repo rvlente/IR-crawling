@@ -34,7 +34,7 @@ memory = joblib.Memory(location="./cache/joblib_mem", verbose=0)
 
 class ContextClassifier:
 
-    def __init__(self, context_size, ngram_size=None, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams_size_n", use_gpu=True) -> None:
+    def __init__(self, ngram_size=None, top_k_ngrams=200, n_estimators=500, classifier_type: str = "gradient_boosting", feature_type: str = "top_k_ngrams_size_n", use_gpu=True) -> None:
         """
         :param context_size: The maximum size of the context to use
         :param ngram_size: The size of the ngrams to use
@@ -43,7 +43,6 @@ class ContextClassifier:
         :param classifier_type: The type of classifier to use. options: "gradient_boosting", "SVM", "LinearSVC", "ProbaLinearSVC"
         :param feature_type: The type of features to use. options: "top_k_ngrams_size_n", "ngrams_size_many"
         """
-        self.context_size = context_size
 
         if ngram_size is not None:
             self._n = ngram_size
@@ -71,46 +70,16 @@ class ContextClassifier:
 
         self._label_encoder = LabelEncoder()
 
-    def _extract_top_k_grams(self, train_urls: list[str]):
-
-        all_ngrams = (nltk.ngrams(url, self._n) for url in train_urls)
-        all_ngrams = [item for sub_list in all_ngrams for item in sub_list]
-
-        ngrams_freq = nltk.FreqDist(all_ngrams)
-
-        self._top_k_grams = [x[0] for x in ngrams_freq.most_common(self._k)]
-
-    def _extract_features(self, urls: Iterable[str], use_tqdm=True, parallel_feature_extraction=True) -> list[list[int]]:
-
-        if self._top_k_grams is None:
-            raise ValueError("Top k ngrams not set, please call fit first")
-
-        def extract_fn(url: str, top_k_grams, n):
-            ngrams_in_url = nltk.FreqDist(nltk.ngrams(url, n))
-            return [ngrams_in_url.get(g, 0) for g in top_k_grams]
-            
-        if parallel_feature_extraction:
-            try:
-                n_cpus = multiprocessing.cpu_count()
-                result = Parallel(n_jobs=n_cpus, batch_size=len(urls)//n_cpus)(delayed(extract_fn)(url, self._top_k_grams, self._n) for url in urls)
-            except ValueError:
-                result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
-        else:
-            result = [extract_fn(url, self._top_k_grams, self._n) for url in urls]
-
-        return result
-
-
-    def fit(self, train_urls: list[str]=None, train_labels: list=None, parallel_feature_extraction=True, dataPath=None) -> 'ContextClassifier':
-        if train_urls is None and train_labels is None and dataPath is None:
-            raise ValueError("No data is given. Specify either train_urls and train_labels or provide a path name")
-        if train_urls is not None and train_labels is not None and dataPath is not None:
-            raise ValueError("Both (train_urls, train_labels) and path name are specified. Please specify only one to avoid ambiguity")
+    def fit(self, train_contexts: list[str]=None, train_labels: list=None, parallel_feature_extraction=True, dataPath=None) -> 'ContextClassifier':
+        if train_contexts is None and train_labels is None and dataPath is None:
+            raise ValueError("No data is given. Specify either train_contexts and train_labels or provide a path name")
+        if train_contexts is not None and train_labels is not None and dataPath is not None:
+            raise ValueError("Both (train_contexts, train_labels) and path name are specified. Please specify only one to avoid ambiguity")
 
         if dataPath is not None:
-            train_urls, train_labels = self.loadData(dataPath)
-        self._ft_extractor.prepare(train_urls)
-        train_features = self._ft_extractor.extract_features(train_urls, parallel_feature_extraction=parallel_feature_extraction)
+            train_contexts, train_labels = self.loadData(dataPath)
+        self._ft_extractor.prepare(train_contexts)
+        train_features = self._ft_extractor.extract_features(train_contexts, parallel_feature_extraction=parallel_feature_extraction)
 
         self._label_encoder.fit(train_labels)
         train_labels = self._label_encoder.transform(train_labels)
@@ -119,16 +88,16 @@ class ContextClassifier:
 
         return self
 
-    def predict(self, urls: list[str]) -> np.ndarray:
-        # return self._label_encoder.inverse_transform(self._classif.predict(self._extract_features(urls)))
-        return self._label_encoder.inverse_transform(self._classif.predict(self._ft_extractor.extract_features(urls)))
+    def predict(self, contexts: list[str]) -> np.ndarray:
+        # return self._label_encoder.inverse_transform(self._classif.predict(self._extract_features(contexts)))
+        return self._label_encoder.inverse_transform(self._classif.predict(self._ft_extractor.extract_features(contexts)))
 
-    def predict_proba(self, urls: list[str]) -> np.ndarray:
-        # return self._classif.predict_proba(self._extract_features(urls, parallel_feature_extraction=False))
-        return self._classif.predict_proba(self._ft_extractor.extract_features(urls, parallel_feature_extraction=False))
+    def predict_proba(self, contexts: list[str]) -> np.ndarray:
+        # return self._classif.predict_proba(self._extract_features(contexts, parallel_feature_extraction=False))
+        return self._classif.predict_proba(self._ft_extractor.extract_features(contexts, parallel_feature_extraction=False))
 
-    def predict_dutchiness(self, urls: list[str]) -> np.ndarray:
-        return self.predict_proba(urls)[:,1]
+    def predict_dutchiness(self, contexts: list[str]) -> np.ndarray:
+        return self.predict_proba(contexts)[:,1]
     
     def save(self, path: str) -> None:
         joblib.dump(self, path + " " + self.classifier_type + " " + self.feature_type)
@@ -139,10 +108,10 @@ class ContextClassifier:
 
     def test(self, dataPath, split=0.9, take=None):
         # Load data
-        urls, labels = self.loadData(dataPath, take)
+        contexts, labels = self.loadData(dataPath, take)
 
         # Split in train and test sets
-        X_train, X_test, y_train, y_test = train_test_split(urls, labels, shuffle=True, train_size=split)
+        X_train, X_test, y_train, y_test = train_test_split(contexts, labels, shuffle=True, train_size=split)
 
         # Test for training time
         cu_time = time.time()
@@ -175,10 +144,10 @@ class ContextClassifier:
         df = pd.read_parquet(dataPath, engine='pyarrow')
 
         if take is None:
-            urls = df["url_context"]
+            contexts = df["url_context"]
             labels = df["is_dutch"]
         else:
-            urls = df["url_context"][:min(take, len(df["url_context"])-1)]
+            contexts = df["url_context"][:min(take, len(df["url_context"])-1)]
             labels = df["is_dutch"][:min(take, len(df["url_context"])-1)]
 
-        return urls, labels
+        return contexts, labels
