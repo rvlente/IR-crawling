@@ -10,7 +10,13 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 model_cache = dict()
 
 
-classifier_types = ["gradient_boosting", "SVM", "ProbaLinearSVC"]
+classifier_types = [
+    # "gradient_boosting",
+    "SVM",
+    "ProbaLinearSVC"
+]
+
+
 feature_types = ["top_k_ngrams_size_n", "top_k_ngrams_size_many"]
 
 
@@ -29,12 +35,13 @@ def predict_dutchiness_of_urls(urls: list[str], path_to_model: str) -> list[floa
 
 state = 0
 
+
 def mutate_state():
     global state
     state += 1
     return state
 
-    
+
 def test_predict_dutchiness_of_urls():
     """
     Tests the predict_dutchiness_of_urls function.
@@ -55,18 +62,19 @@ def test_predict_dutchiness_of_urls():
         print("Unexpected predictions")
     print(results)
 
+
 def test_url_models():
     """
     Tests all the model and feature combinations for the url classifier.
     """
 
     dataPath = 'url_classifier/url_data_with_context.parquet'
-    nr_data_points = 1000
+    nr_data_points = 5000
 
     precision = []
     recall = []
     fscore = []
-    times= []
+    times = []
     for classifier_type in classifier_types:
         per_classifier_precision = []
         per_classifier_recall = []
@@ -74,7 +82,9 @@ def test_url_models():
         per_classifier_time = []
         for feature_type in feature_types:
             print(classifier_type, feature_type)
-            result = UrlClassifier(classifier_type=classifier_type, feature_type=feature_type).test(dataPath, take=nr_data_points)
+            result = UrlClassifier(
+                classifier_type=classifier_type, feature_type=feature_type).test(
+                dataPath, take=nr_data_points)
             per_classifier_precision.append(round(result["precision"], 3))
             per_classifier_recall.append(round(result["recall"], 3))
             per_classifier_fscore.append(round(result["fscore"], 3))
@@ -97,6 +107,7 @@ def test_url_models():
     fig.tight_layout()
     plt.show()
 
+
 def test_context_models():
     """
     Tests all the model and feature combinations for the context classifier.
@@ -112,7 +123,9 @@ def test_context_models():
         per_classifier_recall = []
         per_classifier_fscore = []
         for feature_type in feature_types:
-            result = ContextClassifier(classifier_type=classifier_type, feature_type=feature_type).test(dataPath, take=1000)
+            result = ContextClassifier(
+                classifier_type=classifier_type, feature_type=feature_type).test(
+                dataPath, take=5000)
             per_classifier_precision.append(result["precision"])
             per_classifier_recall.append(result["recall"])
             per_classifier_fscore.append(result["fscore"])
@@ -129,7 +142,8 @@ def test_context_models():
     matrixPlot(ax[2], fscore, "fscore")
 
     fig.tight_layout()
-    plt.show() # This doesnt work and i have no idea why ~Benjamin
+    plt.show()  # This doesnt work and i have no idea why ~Benjamin
+
 
 def test_combined_models():
     """
@@ -146,7 +160,9 @@ def test_combined_models():
         per_classifier_recall = []
         per_classifier_fscore = []
         for feature_type in feature_types:
-            result = CombinedClassifier(classifier_type=classifier_type, feature_type=feature_type).test(dataPath, take=10000)
+            result = CombinedClassifier(
+                classifier_type=classifier_type, feature_type=feature_type).test(
+                dataPath, take=5000)
             per_classifier_precision.append(result["precision"])
             per_classifier_recall.append(result["recall"])
             per_classifier_fscore.append(result["fscore"])
@@ -163,15 +179,16 @@ def test_combined_models():
     matrixPlot(ax[2], fscore, "fscore")
 
     fig.tight_layout()
-    plt.show() # This doesnt work and i have no idea why ~Benjamin
+    plt.show()  # This doesnt work and i have no idea why ~Benjamin
 
-def test_combined(classifier_type, feature_type):
+
+def test_aggregated_model(classifier_type, feature_type):
     """
     Tests a combined url + context classifier.
     """
 
     dataPath = 'url_classifier/url_data_with_context.parquet'
-    take = 40000
+    take = 5000
 
     url_clf = UrlClassifier(classifier_type=classifier_type, feature_type=feature_type)
     url_result = url_clf.test(dataPath, take=take)
@@ -197,23 +214,23 @@ def test_combined(classifier_type, feature_type):
     labels = df["is_dutch"][:take]
 
     X_train, X_test, y_train, y_test = train_test_split(features, labels, shuffle=True, train_size=0.9)
-    # cutoff = lambda x: x > 0.56
+    def cutoff(x): return x > 0.56
 
-    # # AVG
-    # y_pred_avg = cutoff(np.average(X_test, axis=1))
-    # print('precision_avg', precision_score(y_test, y_pred_avg, pos_label=True).item())
-    # print('recall_avg', recall_score(y_test, y_pred_avg, pos_label=True).item())
-    # print('fscore_avg', f1_score(y_test, y_pred_avg, pos_label=True).item())
-    # print()
+    # AVG
+    y_pred_avg = cutoff(np.average(X_test, axis=1))
+    print('precision_avg', precision_score(y_test, y_pred_avg, pos_label=True).item())
+    print('recall_avg', recall_score(y_test, y_pred_avg, pos_label=True).item())
+    print('fscore_avg', f1_score(y_test, y_pred_avg, pos_label=True).item())
+    print()
 
-    # # MAX
-    # y_pred_max = cutoff(np.max(X_test, axis=1))
-    # print('precision_max', precision_score(y_test, y_pred_max, pos_label=True).item())
-    # print('recall_max', recall_score(y_test, y_pred_max, pos_label=True).item())
-    # print('fscore_max', f1_score(y_test, y_pred_max, pos_label=True).item())
-    # print()
+    # MAX
+    y_pred_max = cutoff(np.max(X_test, axis=1))
+    print('precision_max', precision_score(y_test, y_pred_max, pos_label=True).item())
+    print('recall_max', recall_score(y_test, y_pred_max, pos_label=True).item())
+    print('fscore_max', f1_score(y_test, y_pred_max, pos_label=True).item())
+    print()
 
-    # # SVM
+    # SVM
     from sklearn.svm import LinearSVC
     from sklearn.calibration import CalibratedClassifierCV
 
@@ -239,15 +256,15 @@ def test_combined(classifier_type, feature_type):
             return np.array(r)
 
         y_pred_custom = custom(X_test)
-        results.append((precision_score(y_test, y_pred_custom, pos_label=True).item(), recall_score(y_test, y_pred_custom, pos_label=True).item(), f1_score(y_test, y_pred_custom, pos_label=True).item(), a, b))
-    
-    result = max(results, key=lambda x: x[1])
+        results.append((precision_score(y_test, y_pred_custom, pos_label=True).item(), recall_score(
+            y_test, y_pred_custom, pos_label=True).item(), f1_score(y_test, y_pred_custom, pos_label=True).item(), a, b))
+
+    result = max(results, key=lambda x: x[2])
 
     print(result[3], result[4])
     print(f'precision_custom', result[0])
     print(f'recall_custom', result[1])
     print(f'fscore_custom', result[2])
-
 
 
 def matrixPlot(ax, data, title):
@@ -258,7 +275,7 @@ def matrixPlot(ax, data, title):
     # Show all ticks and label them with the respective list entries
     xlabels = []
     for label in feature_types:
-        xlabels.append(label.replace("top_k_", "", 1).replace("_n"," 2").replace("_many", " [3,4,5,6,7]"))
+        xlabels.append(label.replace("top_k_", "", 1).replace("_n", " 2").replace("_many", " [3,4,5,6,7]"))
     ax.set_xticks(np.arange(len(xlabels)))
     ax.set_xticklabels(xlabels, fontsize=6)
     ax.set_yticks(np.arange(len(classifier_types)))
@@ -277,5 +294,3 @@ def matrixPlot(ax, data, title):
                            ha="center", va="center", color="w")
 
     ax.set_title(title, fontsize=7)
-
-
