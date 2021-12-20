@@ -129,7 +129,7 @@ class UrlClassifier:
         return self.predict_proba(urls)[:,1]
     
     def save(self, path: str) -> None:
-        joblib.dump(self, path + " " + self.classifier_type + " " + self.feature_type)
+        joblib.dump(self, path + "-" + self.classifier_type + "-" + self.feature_type)
 
     @classmethod
     def load(cls, path: str) -> 'UrlClassifier':
