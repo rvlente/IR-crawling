@@ -8,25 +8,107 @@ use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
 use static_init::dynamic;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
     sync::{atomic::AtomicBool, Arc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
-use lingua::Language::Dutch;
 use lingua::{Language, LanguageDetector, LanguageDetectorBuilder};
 
 use crossbeam::channel;
 use pyo3::{prelude::*, types::PyList};
 
+use crate::utils::find_seq_in_slice;
+
 use self::{
     config::CrawlerConfig,
-    data_structs::{DebugData, UrlData},
+    data_structs::{DebugData, TimingType, UrlData},
     state::CrawlerState,
 };
+
+#[dynamic]
+static WHITE_SPACE_REGEX: Regex = Regex::new(r"\s+").unwrap();
+
+#[test]
+fn test_parse_html() {
+    let txt = std::fs::read_to_string("test.html").unwrap();
+    let doc = Document::from(txt.as_str());
+
+    let nat_texts: Vec<_> = doc.find(Name("html")).map(|n| n.text()).collect();
+    let nat_text = nat_texts.join("\n");
+
+    let langs: HashSet<Arc<str>> = doc
+        .find(Name("html"))
+        .filter_map(|n| n.attr("lang"))
+        .map(ToOwned::to_owned)
+        .map(Arc::from)
+        .collect();
+
+    let links: HashSet<UrlData> = doc
+        .find(Name("a"))
+        .filter_map(|n| {
+            let url_data = n
+                .attr("href")
+                .map(|rel_url| rel_url.to_owned())
+                .map(|rel_url| {
+                    // eprintln!("{:?}", n.text());
+                    let rel_url: Arc<str> = rel_url.into();
+                    let url_txt: Arc<str> = n.text().into();
+                    (
+                        rel_url.clone(),
+                        url_txt.clone(),
+                        n.parent()
+                            .and_then(|p| {
+                                Crawler::get_context_(
+                                    1000,
+                                    &p.text(),
+                                    url_txt.as_ref(),
+                                    rel_url.as_ref(),
+                                )
+                            })
+                            .unwrap_or_default(),
+                        // self.get_context(&nat_text, url_txt.as_ref(), rel_url.as_ref()).unwrap_or_default(),
+                    )
+                });
+            url_data
+        })
+        .filter_map(|(link, txt, par_txt)| match url::Url::parse(&link) {
+            Ok(parsed) => {
+                if parsed.scheme().starts_with("http") {
+                    Some((link.clone(), link, txt, par_txt))
+                } else {
+                    None
+                }
+            }
+            Err(url::ParseError::RelativeUrlWithoutBase) => {
+                let url_parsed = url::Url::parse("").ok()?;
+                Some((
+                    url_parsed.join(link.as_ref()).ok()?.to_string().into(),
+                    link,
+                    txt,
+                    par_txt,
+                ))
+            }
+            Err(_) => None,
+        })
+        .filter(|(url, ..)| url::Url::parse(url).is_ok())
+        .map(|(url, rel_url, txt, par_txt)| UrlData {
+            url: url,
+            relative_url: rel_url,
+            text: txt.into(),
+            url_context: par_txt.into(),
+            // url: url.into(),
+            // relative_url: String::new().into(),
+            // text: String::new().into(),
+            // parent_text: String::new().into(),
+        })
+        .collect();
+
+    eprintln!("{:#?}", links);
+}
 
 pub mod config;
 pub mod data_structs;
@@ -49,14 +131,9 @@ enum WorkerMsg {
     Stopped,
 }
 
-enum PythonWorkerCmd {
-    ProcessUrl(Vec<Arc<str>>),
-    Stop,
-}
-
-enum PythonWorkerMsg {
-    Stopped,
-}
+// pub struct Timings {
+//     pub start
+// }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Crawler {
@@ -91,17 +168,13 @@ impl Crawler {
         }
     }
 
-    async fn python_worker(
-        &self,
-        cmd_recv: channel::Receiver<PythonWorkerCmd>,
-        msg_send: channel::Sender<PythonWorkerMsg>,
-    ) {
-    }
-
     async fn predict_dutchiness_of_urls<'a>(
         &self,
         urls: impl IntoIterator<Item = &'a Arc<str>>,
     ) -> Result<Vec<f32>> {
+
+        let time_start = Instant::now();
+
         let classifier_file = match self.cfg.classifier_file {
             Some(ref classifier_file) => classifier_file.clone(),
             None => return Err(anyhow::anyhow!("No classifier file specified")),
@@ -128,6 +201,15 @@ impl Crawler {
         })
         .await?;
 
+        if self.cfg.collect_debug_data {
+            let time_elapsed = Instant::now().duration_since(time_start);
+
+            self.state.debug_data.lock().push(DebugData::Timing {
+                type_: TimingType::Predict,
+                duration_secs: time_elapsed.as_secs_f64(),
+            })
+        }
+
         result
     }
 
@@ -150,26 +232,28 @@ impl Crawler {
 
         let is_dutch_url = self.is_dutch_url(&doc_data.url);
 
-        if self.cfg.collect_debug_data {
-            let dutch_detector = LanguageDetectorBuilder::from_languages(&[Dutch]).build();
-            let dutch_language_detected = dutch_detector.detect_language_of(txt).is_some();
+        // if self.cfg.collect_debug_data {
+        //     let detector = LanguageDetectorBuilder::from_all_languages().build();
+        //     // let detector = LanguageDetectorBuilder::from_languages(&[Language::Dutch, Language::English]).build();
+        //     let dutch_language_detected = detector.detect_language_of(txt) == Some(Language::Dutch);
+        //     let confidences: HashMap<_, _> = detector
+        //         .compute_language_confidence_values(txt)
+        //         .into_iter()
+        //         .collect();
 
-            let dutch_confidence = dutch_detector
-                .compute_language_confidence_values(txt)
-                .into_iter()
-                .next()
-                .map(|(_, c)| c)
-                .unwrap_or(0.0);
+        //     let dutch_confidence = *confidences.get(&Language::Dutch).unwrap_or(&0.0);
 
-            let dd = DebugData::Lingua {
-                predicted_dutch: dutch_language_detected,
-                confidence: dutch_confidence,
-                has_dutch_lang_tag: contains_dutch_lang_tag,
-                is_dutch_url,
-            };
+        //     let dd = DebugData::Lingua {
+        //         predicted_dutch: dutch_language_detected,
+        //         dutch_confidence,
+        //         confidences,
+        //         has_dutch_lang_tag: contains_dutch_lang_tag,
+        //         is_dutch_url,
+        //         text_length: txt.chars().count(),
+        //     };
 
-            self.state.debug_data.lock().push(dd);
-        }
+        //     self.state.debug_data.lock().push(dd);
+        // }
 
         if doc_data.langs.is_empty() {
             return is_dutch_url;
@@ -186,8 +270,10 @@ impl Crawler {
             .unwrap_or(usize::max_value())
     }
 
-    async fn make_request(url: &str) -> Result<String> {
+    async fn make_request(&self, url: &str) -> Result<String> {
         // Necessary to prevent reqwest from panicking
+
+        let time_start = Instant::now();
 
         hyper::Uri::from_str(url)?;
 
@@ -211,6 +297,16 @@ impl Crawler {
                 .build()?;
             Ok(client.get(url).send().await?.text().await?)
         };
+
+        if self.cfg.collect_debug_data {
+            let time_end = Instant::now();
+            let time_elapsed = time_end.duration_since(time_start);
+
+            self.state.debug_data.lock().push(DebugData::Timing {
+                type_: TimingType::Download,
+                duration_secs: time_elapsed.as_secs_f64(),
+            });
+        }
 
         txt
     }
@@ -263,9 +359,15 @@ impl Crawler {
     ) -> Option<String> {
         // self.state.contexts.get(url)
 
-        let to_look_for = if url_txt.is_empty() { rel_url } else { url_txt };
+        let to_look_for =
+            WHITE_SPACE_REGEX.replace_all(if url_txt.is_empty() { rel_url } else { url_txt }, " ");
 
-        let pos = parent_txt.find(to_look_for)?;
+        let parent_txt = WHITE_SPACE_REGEX.replace_all(parent_txt, " ");
+
+        let to_look_for: Vec<char> = to_look_for.chars().collect();
+        let text: Vec<char> = parent_txt.chars().collect();
+
+        let pos = find_seq_in_slice(&text, &to_look_for)?;
 
         // let context_size = self.cfg.context_size;
 
@@ -275,30 +377,33 @@ impl Crawler {
             0
         };
 
-        let stop = if pos + context_size < parent_txt.len() {
+        let stop = if pos + context_size < text.len() {
             pos + context_size
         } else {
-            parent_txt.len()
+            text.len()
         };
 
-        Some(parent_txt.chars().take(stop).skip(start).collect())
+        Some(text[start..stop].iter().collect())
     }
 
-    fn get_context(&self, parent_txt: &str, url_txt: &str, rel_url: &str) -> Option<String> {
-        Self::get_context_(self.cfg.context_size, parent_txt, url_txt, rel_url)
+    fn get_context(&self, full_context: &str, url_txt: &str, rel_url: &str) -> Option<String> {
+        Self::get_context_(self.cfg.context_size, full_context, url_txt, rel_url)
     }
 
     async fn get_doc_data(&self, url: &str) -> Result<DocData> {
         // <a> text; text from parent node;
 
-        let txt = Self::make_request(url).await?;
+        let txt = self.make_request(url).await?;
+
+        let time_start = Instant::now();
+
         let doc = Document::from(txt.as_str());
         // let doc = Document::from_read(resp)?;
 
         let nat_texts: Vec<_> = doc.find(Name("html")).map(|n| n.text()).collect();
         let nat_text = nat_texts.join("\n");
 
-        let langs = doc
+        let langs: HashSet<Arc<str>> = doc
             .find(Name("html"))
             .filter_map(|n| n.attr("lang"))
             .map(ToOwned::to_owned)
@@ -314,15 +419,22 @@ impl Crawler {
                     .map(|rel_url| {
                         // eprintln!("{:?}", n.text());
                         let rel_url: Arc<str> = rel_url.into();
-                        let url_txt: Arc<str> = n.text().into();
+                        let url_txt: Arc<str> =
+                            WHITE_SPACE_REGEX.replace_all(&n.text(), " ").into();
+                        // let url_txt: Arc<str> = n.text().into();
                         (
                             rel_url.clone(),
                             url_txt.clone(),
                             n.parent()
                                 .and_then(|p| {
-                                    self.get_context(&p.text(), url_txt.as_ref(), rel_url.as_ref())
+                                    self.get_context(
+                                        WHITE_SPACE_REGEX.replace_all(&p.text(), " ").as_ref(),
+                                        url_txt.as_ref(),
+                                        rel_url.as_ref(),
+                                    )
                                 })
                                 .unwrap_or_default(),
+                            // self.get_context(&nat_text, url_txt.as_ref(), rel_url.as_ref()).unwrap_or_default(),
                         )
                     });
                 url_data
@@ -358,6 +470,21 @@ impl Crawler {
                 // parent_text: String::new().into(),
             })
             .collect();
+
+        if self.cfg.collect_debug_data {
+            let time_elapsed = Instant::now().duration_since(time_start);
+
+            self.state.debug_data.lock().push(DebugData::Timing {
+                type_: TimingType::Process,
+                duration_secs: time_elapsed.as_secs_f64(),
+            });
+
+            self.state.debug_data.lock().push(DebugData::DocMetadata {
+                url: url.into(),
+                langs: langs.clone(),
+                urls: links.clone(),
+            });
+        }
 
         Ok(DocData {
             text: nat_text.into(),

@@ -27,3 +27,13 @@ impl AsRefStr for &str {
         self
     }
 }
+
+
+pub fn find_seq_in_slice<T: Eq>(slice: &[T], seq: &[T]) -> Option<usize> {
+    if slice.len() < seq.len() || slice.is_empty() || seq.is_empty() {
+        return None;
+    }
+
+    slice.windows(seq.len()).position(|w| w == seq)
+}
+
